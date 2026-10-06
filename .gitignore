@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+ENV/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Models & Large weights
+backend/models/ltx/*
+!backend/models/ltx/.gitkeep
+backend/models/indicf5/*
+!backend/models/indicf5/.gitkeep
+
+# Generated Outputs
+backend/generated/videos/*
+!backend/generated/videos/.gitkeep
+backend/generated/audio/*
+!backend/generated/audio/.gitkeep
+backend/generated/subtitles/*
+!backend/generated/subtitles/.gitkeep
+backend/generated/scenes/*
+!backend/generated/scenes/.gitkeep
+
+# Environment variables
+.env
+backend/.env
+frontend/.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
