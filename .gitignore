@@ -46,6 +46,11 @@ backend/generated/subtitles/*
 !backend/generated/subtitles/.gitkeep
 backend/generated/scenes/*
 !backend/generated/scenes/.gitkeep
+media/
+backend/media/
+**/.render_tmp/
+.manim/
+
 
 # Environment variables
 .env

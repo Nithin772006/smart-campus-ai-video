@@ -1,21 +1,12 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from app.services.whisper_service import WhisperService
+from fastapi import APIRouter
+from app.schemas.video import SubtitleRequest, PipelineStatusResponse
 
 router = APIRouter()
-whisper_service = WhisperService()
 
-class SubtitleRequest(BaseModel):
-    audio_path: str
-    language: str = "auto"
-
-@router.post("/generate")
-async def generate_subtitles(request: SubtitleRequest):
-    try:
-        subtitles = await whisper_service.transcribe_audio(
-            audio_path=request.audio_path,
-            language=request.language
-        )
-        return {"subtitles": subtitles, "status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/generate", response_model=PipelineStatusResponse)
+async def generate_subtitles(request: SubtitleRequest = None):
+    return PipelineStatusResponse(
+        status="not_implemented",
+        message="Subtitle generation pipeline will be implemented in the next milestone.",
+        pipeline="subtitle_generation"
+    )

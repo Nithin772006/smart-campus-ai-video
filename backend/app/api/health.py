@@ -1,12 +1,11 @@
 from fastapi import APIRouter
-from app.config import settings
 
 router = APIRouter()
 
-@router.get("")
-async def health_check():
+@router.get("", response_model=dict)
+@router.get("/", response_model=dict)
+async def get_health():
     return {
-        "status": "healthy",
-        "environment": settings.APP_ENV,
-        "device": settings.DEVICE
+        "status": "ok",
+        "service": "smartcampus-ai-video"
     }
