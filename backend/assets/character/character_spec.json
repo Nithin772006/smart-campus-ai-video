@@ -1,0 +1,10 @@
+{
+  "name": "SmartCampus Teacher",
+  "version": "1.0",
+  "style": "modern_educational_3d",
+  "view": "front_three_quarter",
+  "framing": "upper_body",
+  "background": "transparent",
+  "canonical_image": "teacher.png",
+  "intended_use": "talking_avatar"
+}

@@ -82,6 +82,47 @@ cd backend
 # Run Ollama LLM and integration tests:
 python tests/test_ollama_planner.py
 
+# Run IndicF5 TTS tests:
+pytest tests/test_indicf5.py -v
+
+# Run faster-whisper Subtitle & Timestamp tests:
+pytest tests/test_whisper.py -v
+
+# Run FFmpeg Video Composition tests:
+pytest tests/test_ffmpeg.py -v
+
 # Run API endpoint tests:
 python tests/test_api.py
 ```
+
+### 5. IndicF5 Local TTS (Task 5)
+- **POST `/api/audio/tts`**: Accepts an `EducationalVideoPlan` and synthesizes spoken WAV voiceover at `generated/audio/<topic_slug>/narration.wav`.
+- **POST `/api/audio/test`**: Directly synthesizes arbitrary text to WAV.
+
+### 6. faster-whisper Subtitles & Timestamps (Task 6)
+- **POST `/api/subtitle/transcribe`**: Transcribes WAV voiceover using local faster-whisper on CUDA into `subtitles.srt`, `subtitles.vtt`, and `transcription.json` under `generated/subtitles/<topic_slug>/`.
+- **POST `/api/subtitle/test`**: Directly test transcription on any audio file.
+- **Hardware Optimization**: Configured with `base` model (~140MB) and `float16` precision on NVIDIA RTX 2050 (4 GB VRAM), using VAD filtering and CPU fallback.
+
+### 7. FFmpeg Final Video Composition (Task 7)
+- **POST `/api/video/compose`**: Composes Manim visual video, IndicF5 voiceover, and burned subtitles into a final browser-ready H.264/AAC MP4.
+- **POST `/api/video/full`**: Complete single-endpoint orchestration: Qwen2.5 3B → EducationalVideoPlan → Manim → IndicF5 → faster-whisper → FFmpeg → Final MP4.
+- **Duration Synchronization**: Automatically aligns durations via `tpad` frame-hold or `apad` silence padding.
+
+### 8. AI Teacher / Talking Avatar Layer (Task 8)
+- **POST `/api/avatar/preview`**: Generates a 10s preview clip using canonical `teacher.png` and existing IndicF5 narration.
+- **GET `/api/avatar/character`**: Retrieves canonical teacher metadata and layout rules.
+- **Provider Architecture**: `AvatarProvider` abstraction with fallback overlay generator and MuseTalk-ready interfaces.
+- **Full Video Pipeline Extension**: Optional `character: true` and `character_position: "auto" | "left" | "right"` parameters on `POST /api/video/full`.
+
+### 9. Hugging Face Inference Providers Cloud Video (Task 9A Proof of Concept)
+- **GET `/api/video/cloud/status`**: Reports configuration and availability status of cloud video provider.
+- **POST `/api/video/cloud/generate`**: Generates isolated educational AI video scenes via Hugging Face Inference Providers (e.g. `Wan-AI/Wan2.2-TI2V-5B` via `fal-ai`).
+- **Isolation**: Standalone proof of concept. Not yet tied to Qwen/Manim/FFmpeg pipelines.
+
+### 10. Visual Scene Planner & Scene Router (Task 9B)
+- **POST `/api/video/plan`**: Visual-first scene planner and deterministic router. Produces complete video production plans mapping scenes to Manim, Cloud Video, Avatar, or Mixed without rendering media.
+- **Pedagogical Engine Allocations**: Guarantees equations and coordinate graphs use Manim vector rendering; routes cinematic visual metaphors to Cloud Video and lecture milestones to the AI Teacher.
+
+
+

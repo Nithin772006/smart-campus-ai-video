@@ -25,6 +25,26 @@ class SubtitleRequest(BaseModel):
     audio_path: str = Field(..., description="Path to generated or source audio file", example="generated/audio/narration.wav")
     language: Optional[str] = Field("auto", description="Transcription language code or 'auto'", example="auto")
 
+class SubtitleSegmentItem(BaseModel):
+    id: int = Field(..., description="Segment sequential index")
+    start: float = Field(..., description="Segment start timestamp in seconds")
+    end: float = Field(..., description="Segment end timestamp in seconds")
+    text: str = Field(..., description="Transcribed text content")
+
+class SubtitleResponse(BaseModel):
+    success: bool = Field(True, description="Transcription status flag")
+    audio_path: str = Field(..., description="Path to source audio file", example="generated/audio/newtons_second_law/narration.wav")
+    subtitle_srt_path: str = Field(..., description="Relative path to generated SRT subtitle file", example="generated/subtitles/newtons_second_law/subtitles.srt")
+    subtitle_vtt_path: str = Field(..., description="Relative path to generated WebVTT subtitle file", example="generated/subtitles/newtons_second_law/subtitles.vtt")
+    transcription_path: str = Field(..., description="Relative path to transcription JSON file", example="generated/subtitles/newtons_second_law/transcription.json")
+    text: str = Field(..., description="Full transcribed text")
+    duration_seconds: float = Field(..., description="Measured audio duration in seconds")
+    segment_count: int = Field(..., description="Total number of timestamped segments")
+    language: str = Field("en", description="Detected or requested language code")
+    generation_time_seconds: float = Field(..., description="Elapsed transcription time in seconds")
+    device: str = Field(..., description="Inference device used (cuda or cpu)")
+    segments: Optional[List[Dict[str, Any]]] = Field(None, description="Detailed timestamped segments")
+
 class PipelineStatusResponse(BaseModel):
     status: str = Field("not_implemented", example="not_implemented")
     message: str = Field(..., example="Pipeline will be implemented in the next milestone.")
@@ -92,6 +112,7 @@ class TTSPlanRequest(BaseModel):
     topic: Optional[str] = Field(None, description="Direct topic if plan is passed at root level")
     title: Optional[str] = Field(None, description="Direct title if plan is passed at root level")
     scenes: Optional[List[dict]] = Field(None, description="Direct scenes if plan is passed at root level")
+    target_duration_seconds: Optional[float] = Field(None, description="Target narration duration in seconds", example=30.0)
 
 
 class TTSAudioResponse(BaseModel):
@@ -104,6 +125,100 @@ class TTSAudioResponse(BaseModel):
     narration_text: Optional[str] = Field(None, description="Spoken narration text that was synthesized")
     topic: Optional[str] = Field(None, description="Educational topic name")
     scene_scripts: Optional[List[dict]] = Field(None, description="Per-scene narration breakdowns")
+    target_duration_seconds: Optional[float] = Field(None, description="Target duration in seconds")
+    speech_rate_wpm: Optional[float] = Field(None, description="Actual speaking rate in words per minute")
+    actual_wpm: Optional[float] = Field(None, description="Actual speaking rate in words per minute")
+    estimated_wpm: Optional[float] = Field(None, description="Estimated speaking rate before synthesis")
+    estimated_duration_seconds: Optional[float] = Field(None, description="Estimated duration in seconds")
+    word_count: Optional[int] = Field(None, description="Narration word count")
+
+
+class VideoCompositionRequest(BaseModel):
+    video_path: str = Field(..., description="Path to input Manim/scene MP4 video")
+    audio_path: str = Field(..., description="Path to input narration WAV/audio file")
+    subtitle_path: Optional[str] = Field(None, description="Optional path to SRT subtitles to burn")
+    output_path: Optional[str] = Field(None, description="Optional destination path for final MP4")
+    output_name: Optional[str] = Field(None, description="Optional output file name")
+    burn_subtitles: Optional[bool] = Field(None, description="Override whether to burn subtitles into video")
+
+
+class VideoCompositionResponse(BaseModel):
+    success: bool = Field(True, description="Composition status flag")
+    video_path: str = Field(..., description="Relative web path to final composed MP4")
+    video_url: Optional[str] = Field(None, description="Direct URL or web path to composed MP4")
+    duration_seconds: float = Field(..., description="Final composed video duration in seconds")
+    video_duration_seconds: float = Field(..., description="Original input visual video duration")
+    audio_duration_seconds: float = Field(..., description="Original input narration audio duration")
+    sync_difference: Optional[float] = Field(0.0, description="Duration difference between video and audio in seconds")
+    audio_speed: Optional[str] = Field("1.00x", description="Audio playback speed factor")
+    is_synchronized: Optional[bool] = Field(True, description="Sync validation status")
+    file_size_mb: Optional[float] = Field(None, description="Final MP4 file size in megabytes")
+    output_size_mb: Optional[float] = Field(None, description="Final MP4 file size in megabytes")
+    has_video: bool = Field(True, description="Whether final video contains video track")
+    has_audio: bool = Field(True, description="Whether final video contains audio track")
+    has_subtitles: bool = Field(True, description="Whether subtitles were burned into video")
+    subtitles_burned: Optional[bool] = Field(True, description="Whether subtitles were burned into video")
+    generation_time_seconds: float = Field(..., description="Time taken for FFmpeg composition in seconds")
+    width: Optional[int] = Field(None, description="Output video width")
+    height: Optional[int] = Field(None, description="Output video height")
+    fps: Optional[float] = Field(None, description="Output video frame rate")
+    video_codec: Optional[str] = Field(None, description="Video codec name")
+    audio_codec: Optional[str] = Field(None, description="Audio codec name")
+    pixel_format: Optional[str] = Field(None, description="Pixel format")
+
+
+class FullVideoRequest(BaseModel):
+    topic: Optional[str] = Field(None, description="Educational topic to plan, render, narrate, subtitle, and compose")
+    question: Optional[str] = Field(None, description="Alternative phrasing for educational topic")
+    quality: Optional[str] = Field("medium_quality", description="Manim render quality: low_quality, medium_quality, high_quality")
+    burn_subtitles: Optional[bool] = Field(True, description="Whether to burn subtitles into final MP4")
+    language: Optional[str] = Field("en", description="Narration language code")
+    target_duration_seconds: Optional[float] = Field(30.0, description="Target video duration in seconds (e.g. 30, 45, 60, 90, 120)")
+    character: Optional[bool] = Field(False, description="Whether to include the AI Teacher avatar layer")
+    character_position: Optional[str] = Field("auto", description="Position of AI Teacher avatar: auto, left, right")
+    visual_style: Optional[str] = Field("academic", description="Visual style: academic, explainer, classroom")
+
+    def get_prompt(self) -> str:
+        prompt = (self.topic or self.question or "").strip()
+        if not prompt:
+            raise ValueError("Either 'topic' or 'question' must be provided.")
+        return prompt
+
+
+class FullVideoResponse(BaseModel):
+    success: bool = Field(True, description="Overall pipeline status flag")
+    topic: str = Field(..., description="Resolved educational topic")
+    video_path: str = Field(..., description="Relative path to final composed MP4")
+    video_url: Optional[str] = Field(None, description="Direct URL or web path to video")
+    duration_seconds: float = Field(..., description="Final composed video duration")
+    scene_count: int = Field(..., description="Number of visual scenes")
+    video_duration_seconds: Optional[float] = Field(None, description="Original input visual video duration")
+    audio_duration_seconds: float = Field(..., description="Duration of synthesized narration audio")
+    sync_difference: Optional[float] = Field(0.0, description="Difference between video and audio durations")
+    audio_speed: Optional[str] = Field("1.00x", description="Audio playback speed factor")
+    is_synchronized: Optional[bool] = Field(True, description="Whether sync validation passed")
+    subtitle_segment_count: int = Field(..., description="Number of timestamped subtitle cues")
+    subtitles_burned: Optional[bool] = Field(True, description="Whether subtitles were burned into video")
+    has_subtitles: Optional[bool] = Field(True, description="Whether subtitles were burned into video")
+    video_codec: Optional[str] = Field(None, description="Video codec")
+    audio_codec: Optional[str] = Field(None, description="Audio codec")
+    pixel_format: Optional[str] = Field(None, description="Pixel format")
+    speech_rate_wpm: Optional[float] = Field(None, description="Actual speaking rate in words per minute")
+    actual_wpm: Optional[float] = Field(None, description="Actual speaking rate in words per minute")
+    estimated_wpm: Optional[float] = Field(None, description="Estimated speaking rate before synthesis")
+    estimated_duration_seconds: Optional[float] = Field(None, description="Estimated narration duration in seconds")
+    target_duration_seconds: Optional[float] = Field(30.0, description="Target duration in seconds")
+    narration_words: Optional[int] = Field(None, description="Word count of spoken narration")
+    generation_time_seconds: float = Field(..., description="Total pipeline execution time in seconds")
+    file_size_mb: Optional[float] = Field(None, description="Output video file size in megabytes")
+    output_size_mb: Optional[float] = Field(None, description="Output video file size in megabytes")
+    plan: Optional[dict] = Field(None, description="Structured EducationalVideoPlan")
+    narration_path: Optional[str] = Field(None, description="Path to generated narration WAV")
+    subtitle_path: Optional[str] = Field(None, description="Path to generated SRT subtitles")
+    character_enabled: Optional[bool] = Field(False, description="Whether AI teacher character was included")
+    character_position: Optional[str] = Field(None, description="Position used for AI teacher character")
+    character_video_path: Optional[str] = Field(None, description="Path to generated character video track")
+
 
 
 

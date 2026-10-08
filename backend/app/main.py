@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.api import health, video, audio, subtitle
+from app.api import health, video, audio, subtitle, avatar, cloud_video
 
 
 
@@ -64,10 +64,15 @@ async def health_check():
 
 # Mount static files for generated videos and media artifacts
 app.mount("/generated", StaticFiles(directory=str(settings.GENERATED_DIR)), name="generated")
+if settings.ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(settings.ASSETS_DIR)), name="assets")
 
 # API Routers
 app.include_router(health.router, prefix="/api/health", tags=["Health"])
 app.include_router(video.router, prefix="/api/video", tags=["Video"])
 app.include_router(audio.router, prefix="/api/audio", tags=["Audio"])
 app.include_router(subtitle.router, prefix="/api/subtitle", tags=["Subtitle"])
+app.include_router(avatar.router, prefix="/api/avatar", tags=["Avatar"])
+app.include_router(cloud_video.router, prefix="/api/video/cloud", tags=["Cloud Video"])
+
 

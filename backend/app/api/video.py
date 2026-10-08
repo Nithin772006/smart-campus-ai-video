@@ -11,6 +11,18 @@ from app.schemas.video import (
     DynamicTopicResponse,
     LLMTopicRequest,
     LLMTopicResponse,
+    VideoCompositionRequest,
+    VideoCompositionResponse,
+    FullVideoRequest,
+    FullVideoResponse,
+)
+from app.schemas.visual_scene import (
+    VisualPlanRequest,
+    VisualPlanResponse,
+)
+from app.schemas.render import (
+    TopicRenderRequest,
+    TopicRenderResponse,
 )
 from app.services.manim_service import (
     generate_manim_video,
@@ -18,6 +30,16 @@ from app.services.manim_service import (
     render_educational_plan_to_video,
 )
 from app.services.llm_planner import llm_academic_planner
+from app.services.visual_scene_planner import (
+    visual_scene_planner,
+    RuleBasedVisualScenePlanner,
+)
+from app.services.scene_router import scene_router
+from app.services.scene_render_service import scene_render_service
+from app.pipelines.video_composition import (
+    video_composition_pipeline,
+    full_educational_video_pipeline,
+)
 
 
 router = APIRouter()
@@ -158,4 +180,172 @@ async def generate_llm_topic_endpoint(request: LLMTopicRequest):
             status_code=500,
             detail=f"Failed to generate LLM-planned video: {str(e)}"
         )
+
+
+@router.post("/compose", response_model=VideoCompositionResponse, summary="Compose Video, Narration Audio and Subtitles")
+async def compose_video_endpoint(request: VideoCompositionRequest):
+    """
+    Combines an educational visual video (Manim), spoken narration audio (IndicF5),
+    and SRT subtitles (faster-whisper) into a browser-ready MP4 container using FFmpeg.
+    Synchronizes durations (tpad last-frame freeze or apad silence) and burns subtitles.
+    """
+    try:
+        result = await run_in_threadpool(
+            video_composition_pipeline.compose,
+            video_path=request.video_path,
+            audio_path=request.audio_path,
+            subtitle_path=request.subtitle_path,
+            output_path=request.output_path,
+            output_name=request.output_name,
+            burn_subtitles=request.burn_subtitles,
+        )
+        return VideoCompositionResponse(**result)
+    except FileNotFoundError as fnf:
+        raise HTTPException(status_code=404, detail=str(fnf))
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except RuntimeError as re:
+        raise HTTPException(status_code=500, detail=str(re))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Video composition failed: {str(e)}")
+
+
+@router.post("/full", response_model=FullVideoResponse, summary="Generate Full End-to-End Educational Video")
+async def generate_full_video_endpoint(request: FullVideoRequest):
+    """
+    Executes the complete five-stage educational video generation pipeline:
+    1. Qwen2.5 3B local planning -> EducationalVideoPlan
+    2. Dynamic Manim rendering -> Visual Scenes MP4
+    3. IndicF5 local TTS -> Spoken Voiceover WAV
+    4. faster-whisper local alignment -> Timestamps & Subtitles SRT
+    5. FFmpeg composition -> Final Browser-Ready MP4
+    """
+    try:
+        prompt = request.get_prompt()
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+    try:
+        result = await run_in_threadpool(
+            full_educational_video_pipeline.generate,
+            topic=prompt,
+            quality=request.quality or "medium_quality",
+            burn_subtitles=request.burn_subtitles if request.burn_subtitles is not None else True,
+            language=request.language or "en",
+            target_duration_seconds=request.target_duration_seconds or 30.0,
+            character=bool(request.character),
+            character_position=request.character_position or "auto",
+            visual_style=request.visual_style or "academic",
+        )
+
+        return FullVideoResponse(**result)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except RuntimeError as re:
+        raise HTTPException(status_code=500, detail=str(re))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Full educational video generation failed: {str(e)}")
+
+
+@router.post(
+    "/plan",
+    response_model=VisualPlanResponse,
+    summary="Plan and route visual educational scenes (Task 9B)",
+    description="Generates a visual-first educational production plan and routes each scene to Manim, Cloud Video, or Avatar without rendering media."
+)
+async def generate_visual_plan_endpoint(request: VisualPlanRequest) -> VisualPlanResponse:
+    """
+    Visual Scene Planner & Router Endpoint (Task 9B).
+    Creates structured educational scene plan and deterministically assigns visual engines.
+    Does NOT invoke video rendering, TTS, or external cloud inference.
+    """
+    if not request.topic or not request.topic.strip():
+        raise HTTPException(status_code=400, detail="Topic field cannot be empty.")
+
+    clean_topic = request.topic.strip()
+    target_duration = request.target_duration or 30.0
+    level = request.level or "intermediate"
+    planner_mode = (request.planner or "auto").strip().lower()
+
+    try:
+        if planner_mode == "rule_based":
+            planner_instance = RuleBasedVisualScenePlanner()
+            raw_plan = await run_in_threadpool(
+                planner_instance.plan,
+                topic=clean_topic,
+                target_duration=target_duration,
+                level=level,
+            )
+            planner_used = "rule_based"
+        else:
+            raw_plan = await run_in_threadpool(
+                visual_scene_planner.plan,
+                topic=clean_topic,
+                target_duration=target_duration,
+                level=level,
+            )
+            planner_used = "qwen2.5:3b (with fallback)"
+
+        # Apply deterministic scene routing rules
+        routed_plan = await run_in_threadpool(scene_router.route_plan, raw_plan)
+
+        return VisualPlanResponse(
+            success=True,
+            topic=routed_plan.original_plan.topic,
+            title=routed_plan.original_plan.title,
+            total_duration_seconds=routed_plan.original_plan.total_duration_seconds,
+            learning_objectives=routed_plan.original_plan.learning_objectives,
+            scenes=routed_plan.routed_scenes,
+            engine_summary=routed_plan.engine_summary,
+            planner_used=planner_used,
+        )
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Visual scene planning failed: {str(e)}")
+
+
+@router.post(
+    "/render",
+    response_model=TopicRenderResponse,
+    summary="Render routed visual scenes independently (Task 9C)",
+    description="Plans, routes, and independently renders scenes across Manim, Cloud Video, and Avatar without stitching into a final video."
+)
+async def render_scenes_endpoint(request: TopicRenderRequest) -> TopicRenderResponse:
+    """
+    Renders each routed scene into its own standalone MP4 video.
+    Does not concatenate scenes (reserved for Task 9D compositor).
+    """
+    if not request.topic or not request.topic.strip():
+        raise HTTPException(status_code=400, detail="Topic field cannot be empty.")
+
+    clean_topic = request.topic.strip()
+    quality = request.quality or "medium_quality"
+    planner_mode = (request.planner or "auto").strip().lower()
+
+    try:
+        # 1. Plan scenes
+        if planner_mode == "rule_based":
+            planner_instance = RuleBasedVisualScenePlanner()
+            raw_plan = await run_in_threadpool(planner_instance.plan, topic=clean_topic)
+        else:
+            raw_plan = await run_in_threadpool(visual_scene_planner.plan, topic=clean_topic)
+
+        # 2. Route scenes
+        routed_plan = await run_in_threadpool(scene_router.route_plan, raw_plan)
+
+        # 3. Render scenes independently
+        result = await run_in_threadpool(
+            scene_render_service.render_plan,
+            plan=routed_plan,
+            quality=quality,
+        )
+        return result
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Visual scene rendering failed: {str(e)}")
+
 

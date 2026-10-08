@@ -111,22 +111,20 @@ class IndicF5Service:
         # 2. Check f5_tts package basic reference sample
         try:
             import f5_tts
-            pkg_dir = Path(f5_tts.__file__).parent
-            builtin_ref = pkg_dir / "infer" / "examples" / "basic" / "basic_ref_en.wav"
-            if builtin_ref.exists():
-                return str(builtin_ref)
-        except Exception:
-            pass
+            paths = getattr(f5_tts, "__path__", [])
+            for p in paths:
+                candidate = Path(p) / "infer" / "examples" / "basic" / "basic_ref_en.wav"
+                if candidate.exists():
+                    return str(candidate)
+        except Exception as e:
+            logger.warning(f"[TTS] Warning locating builtin reference audio: {e}")
 
-        # 3. Fallback: create a tiny reference WAV if none exists
-        fallback_ref = settings.AUDIO_DIR / "_default_ref.wav"
-        if not fallback_ref.exists():
-            import numpy as np
-            sr = 24000
-            # 1 second of silent/gentle sine tone placeholder
-            tone = (np.sin(2 * np.pi * 440 * np.linspace(0, 1, sr)) * 0.1).astype(np.float32)
-            sf.write(str(fallback_ref), tone, sr)
-        return str(fallback_ref)
+        # 3. Fallback: check models directory or root
+        alt_ref = Path(__file__).resolve().parent.parent.parent / "models" / "indicf5" / "reference.wav"
+        if alt_ref.exists():
+            return str(alt_ref)
+
+        return str(custom_ref)
 
     def _load_model(self, target_device: str):
         """Loads or reloads the F5-TTS model on specified device."""
@@ -248,37 +246,98 @@ class IndicF5Service:
     def generate_plan_narration(
         self,
         plan: EducationalVideoPlan,
+        target_duration_seconds: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
-        Builds a comprehensive educational narration from an EducationalVideoPlan,
-        synthesizes full audio narration, and returns detailed metadata.
+        Builds a natural educational narration from an EducationalVideoPlan,
+        synthesizes full audio narration at natural speech rate (~160 WPM),
+        and returns detailed timing and sync metadata.
         """
-        # Step 1: Build natural narration using NarrationService
-        narration_result = NarrationService.build_plan_narration(plan)
+        eff_duration = (
+            target_duration_seconds
+            or getattr(plan, "target_duration", None)
+            or settings.DEFAULT_TARGET_DURATION_SECONDS
+        )
+
+        # Step 1: Build natural narration using NarrationService with word budgeting
+        narration_result = NarrationService.build_plan_narration(
+            plan=plan,
+            target_duration_seconds=eff_duration,
+        )
         full_script = narration_result["full_script"]
 
         if not full_script:
             raise ValueError(f"Could not generate narration script from plan for topic: {plan.topic}")
+
+        # Requirement 7: Pre-TTS Speech Rate Validation Logging
+        logger.info(
+            f"\n[NARRATION]\n"
+            f"Words: {narration_result['word_count']}\n"
+            f"Target WPM: {narration_result['target_wpm']}\n"
+            f"Estimated duration: {narration_result['estimated_duration_seconds']:.2f}s"
+        )
 
         # Step 2: Establish topic directory
         topic_slug = slugify_topic(plan.topic)
         topic_audio_dir = self.audio_base_dir / topic_slug
         topic_audio_dir.mkdir(parents=True, exist_ok=True)
 
-        # Step 3: Synthesize audio
-        speech_result = self.generate_speech(
-            text=full_script,
-            output_dir=topic_audio_dir,
-            filename="narration.wav",
-            topic=plan.topic,
-        )
+        # Step 3: Synthesize audio with optional retry loop (Requirement 9)
+        max_retries = settings.MAX_NARRATION_RETRIES
+        current_script = full_script
+        current_words = narration_result["word_count"]
+        speech_result = None
+
+        for attempt in range(max_retries + 1):
+            speech_result = self.generate_speech(
+                text=current_script,
+                output_dir=topic_audio_dir,
+                filename="narration.wav",
+                topic=plan.topic,
+            )
+            actual_dur = speech_result["duration_seconds"]
+            actual_wpm = round((current_words / actual_dur) * 60.0, 1) if actual_dur > 0 else 0.0
+
+            # Requirement 8: Post-TTS Actual Duration Validation Logging
+            logger.info(
+                f"\n[NARRATION]\n"
+                f"Text words: {current_words}\n"
+                f"Target duration: {eff_duration:.1f}s\n"
+                f"Estimated duration: {narration_result['estimated_duration_seconds']:.2f}s\n"
+                f"Actual IndicF5 duration: {actual_dur:.2f}s\n"
+                f"Actual WPM: {actual_wpm}"
+            )
+
+            # Check if duration significantly exceeds target
+            max_allowed = eff_duration * (1.0 + settings.NARRATION_DURATION_TOLERANCE)
+            if actual_dur <= max_allowed or attempt >= max_retries:
+                # Accept actual duration as master clock
+                speech_result["actual_wpm"] = actual_wpm
+                break
+
+            # If audio too long, shorten narration and retry (up to MAX_NARRATION_RETRIES)
+            logger.warning(
+                f"[NARRATION] Audio duration {actual_dur:.2f}s exceeds target limit {max_allowed:.2f}s "
+                f"(Attempt {attempt + 1}/{max_retries + 1}). Condensing narration..."
+            )
+            condensed_budget = NarrationService.calculate_word_budget(eff_duration * 0.85)
+            current_script = NarrationService._prune_to_word_budget(
+                current_script,
+                target_duration_seconds=eff_duration * 0.85,
+            )
+            current_words = len(current_script.split())
 
         # Step 4: Combine and return enriched metadata
         speech_result.update({
             "topic": plan.topic,
             "title": plan.title,
             "scene_scripts": narration_result["scene_scripts"],
-            "word_count": narration_result["word_count"],
+            "word_count": current_words,
+            "target_duration_seconds": eff_duration,
+            "target_wpm": narration_result["target_wpm"],
+            "estimated_duration_seconds": narration_result["estimated_duration_seconds"],
+            "estimated_wpm": narration_result["estimated_wpm"],
+            "actual_wpm": speech_result.get("actual_wpm", 160.0),
         })
         return speech_result
 

@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     
     LTX_MODELS_DIR: Path = MODELS_DIR / "ltx"
     INDICF5_MODELS_DIR: Path = MODELS_DIR / "indicf5"
+
+    ASSETS_DIR: Path = BASE_DIR / "assets"
+    CHARACTER_DIR: Path = ASSETS_DIR / "character"
+    CANONICAL_TEACHER_IMAGE: Path = CHARACTER_DIR / "teacher.png"
+    AVATAR_OUTPUT_DIR: Path = GENERATED_DIR / "avatar"
+    CLOUD_VIDEO_DIR: Path = GENERATED_DIR / "cloud_video"
+    RENDERED_SCENES_DIR: Path = GENERATED_DIR / "rendered_scenes"
     
     # Compute
     DEVICE: str = "cuda"
@@ -34,12 +41,48 @@ class Settings(BaseSettings):
     TTS_DEVICE: str = "auto"
     TTS_MODEL_TYPE: str = "F5TTS_v1_Base"
     TTS_REF_TEXT: str = "Some call me nature, others call me mother nature."
-    TTS_SPEED: float = 1.0
+    TTS_SPEED: float = float(os.getenv("TTS_SPEED", "1.5"))
+
+    # Narration Rate & Duration Configuration
+    NARRATION_TARGET_WPM: int = 160
+    NARRATION_DURATION_TOLERANCE: float = 0.20
+    MAX_NARRATION_RETRIES: int = 2
+    DEFAULT_TARGET_DURATION_SECONDS: float = 30.0
 
     # Ollama LLM Configuration
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "qwen2.5:3b"
     OLLAMA_TIMEOUT: float = 60.0
+
+    # Whisper Subtitle Configuration
+    WHISPER_MODEL: str = "base"
+    WHISPER_DEVICE: str = "auto"
+    WHISPER_COMPUTE_TYPE: str = "auto"
+
+    # FFmpeg Composition Configuration
+    FFMPEG_PATH: str = "ffmpeg"
+    FFPROBE_PATH: str = "ffprobe"
+    BURN_SUBTITLES: bool = True
+    VIDEO_CODEC: str = "libx264"
+    AUDIO_CODEC: str = "aac"
+    VIDEO_CRF: int = 23
+    AUDIO_BITRATE: str = "128k"
+    PIXEL_FORMAT: str = "yuv420p"
+    MOVFLAGS: str = "+faststart"
+
+    # Avatar Configuration
+    AVATAR_ENABLED: bool = False
+    AVATAR_PROVIDER: str = "musetalk"
+    AVATAR_CHARACTER: str = "teacher"
+    AVATAR_DEVICE: str = "auto"
+    AVATAR_MAX_VRAM_GB: int = 4
+
+    # Hugging Face Video Configuration (Task 9A Proof of Concept)
+    HF_TOKEN: str = ""
+    HF_VIDEO_ENABLED: bool = False
+    HF_VIDEO_PROVIDER: str = "fal-ai"
+    HF_VIDEO_MODEL: str = "Wan-AI/Wan2.2-TI2V-5B"
+    HF_VIDEO_TIMEOUT: float = 300.0
 
     @property
     def cors_origins_list(self) -> List[str]:
@@ -58,6 +101,10 @@ class Settings(BaseSettings):
             self.MODELS_DIR,
             self.LTX_MODELS_DIR,
             self.INDICF5_MODELS_DIR,
+            self.CHARACTER_DIR,
+            self.AVATAR_OUTPUT_DIR,
+            self.CLOUD_VIDEO_DIR,
+            self.RENDERED_SCENES_DIR,
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)

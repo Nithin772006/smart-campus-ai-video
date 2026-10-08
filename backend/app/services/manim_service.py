@@ -8,6 +8,7 @@ import sys
 import time
 import shutil
 import subprocess
+import tempfile
 import csv
 import logging
 import re
@@ -145,61 +146,66 @@ def generate_manim_video(
     target_dir.mkdir(parents=True, exist_ok=True)
     final_video_path = target_dir / output_filename
 
-    temp_render_dir = target_dir / ".render_tmp"
-    if temp_render_dir.exists():
-        shutil.rmtree(temp_render_dir, ignore_errors=True)
-    temp_render_dir.mkdir(parents=True, exist_ok=True)
-
-    scene_script_path = Path(__file__).resolve().parent / topic_info["scene_module"]
-    if not scene_script_path.exists():
-        raise FileNotFoundError(f"Scene script file not found: {scene_script_path}")
-
-    start_time = time.perf_counter()
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "manim",
-        "render",
-        quality_flag,
-        "--media_dir",
-        str(temp_render_dir),
-        str(scene_script_path),
-        scene_name,
-    ]
-
+    temp_render_dir = Path(tempfile.mkdtemp(prefix="manim_spec_render_"))
     try:
-        subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr or e.stdout
-        logger.error(f"Manim render failed with exit code {e.returncode}: {error_msg}")
-        raise RuntimeError(f"Manim rendering failed: {error_msg}") from e
+        scene_script_path = Path(__file__).resolve().parent / topic_info["scene_module"]
+        if not scene_script_path.exists():
+            raise FileNotFoundError(f"Scene script file not found: {scene_script_path}")
 
-    generation_time_seconds = round(time.perf_counter() - start_time, 2)
+        start_time = time.perf_counter()
 
-    rendered_candidates = list(temp_render_dir.glob(f"**/{scene_name}.mp4"))
-    if not rendered_candidates:
-        rendered_candidates = list(temp_render_dir.glob("**/*.mp4"))
+        cmd = [
+            sys.executable,
+            "-m",
+            "manim",
+            "render",
+            quality_flag,
+            "--media_dir",
+            str(temp_render_dir),
+            str(scene_script_path),
+            scene_name,
+        ]
 
-    if not rendered_candidates:
-        raise RuntimeError("Manim completed but no output MP4 file was found.")
+        env = os.environ.copy()
+        if "PYTHONHASHSEED" in env:
+            seed_val = env.get("PYTHONHASHSEED", "")
+            if seed_val != "random" and not (seed_val.isdigit() and 0 <= int(seed_val) <= 4294967295):
+                del env["PYTHONHASHSEED"]
 
-    rendered_file = rendered_candidates[0]
+        try:
+            subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+                env=env,
+                cwd=str(settings.BASE_DIR),
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr or e.stdout
+            logger.error(f"Manim render failed with exit code {e.returncode}: {error_msg}")
+            raise RuntimeError(f"Manim rendering failed: {error_msg}") from e
 
-    if final_video_path.exists():
-        final_video_path.unlink()
-    shutil.copy2(rendered_file, final_video_path)
+        generation_time_seconds = round(time.perf_counter() - start_time, 2)
 
-    try:
-        shutil.rmtree(temp_render_dir, ignore_errors=True)
-    except Exception:
-        pass
+        rendered_candidates = list(temp_render_dir.glob(f"**/{scene_name}.mp4"))
+        if not rendered_candidates:
+            rendered_candidates = list(temp_render_dir.glob("**/*.mp4"))
+
+        if not rendered_candidates:
+            raise RuntimeError("Manim completed but no output MP4 file was found.")
+
+        rendered_file = rendered_candidates[0]
+
+        if final_video_path.exists():
+            final_video_path.unlink()
+        shutil.copy2(rendered_file, final_video_path)
+    finally:
+        try:
+            shutil.rmtree(temp_render_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     duration_seconds = get_video_duration(final_video_path)
     file_size_bytes = final_video_path.stat().st_size
@@ -234,10 +240,14 @@ def _build_dynamic_scene_script_content(plan: EducationalVideoPlan) -> str:
     Generate Python script containing sequenced Manim Scene classes
     corresponding to each planned educational scene.
     """
+    backend_dir_repr = repr(str(settings.BASE_DIR))
     lines = [
         "# Auto-generated dynamic educational scenes",
         "import sys",
         "from pathlib import Path",
+        f"if {backend_dir_repr} not in sys.path:",
+        f"    sys.path.insert(0, {backend_dir_repr})",
+        "",
         "from manim import *",
         "from app.services.manim_components import (",
         "    DynamicTitleScene,",
@@ -371,10 +381,9 @@ def render_educational_plan_to_video(
     target_dir.mkdir(parents=True, exist_ok=True)
     final_video_path = target_dir / f"{topic_slug}.mp4"
 
-    temp_render_dir = target_dir / ".render_tmp"
-    if temp_render_dir.exists():
-        shutil.rmtree(temp_render_dir, ignore_errors=True)
-    temp_render_dir.mkdir(parents=True, exist_ok=True)
+    # Use a system temporary directory outside the workspace so uvicorn's file watcher
+    # (--reload) does not detect runner_scenes.py and trigger an immediate server restart/SIGINT
+    temp_render_dir = Path(tempfile.mkdtemp(prefix="manim_dynamic_render_"))
 
     # 3. Quality flag resolution
     quality_key = quality.strip().lower()
@@ -382,61 +391,70 @@ def render_educational_plan_to_video(
         quality_key, ("-qm", "720p30", "medium")
     )
 
-    # 4. Generate runner script
-    script_content = _build_dynamic_scene_script_content(plan)
-    script_path = temp_render_dir / "runner_scenes.py"
-    script_path.write_text(script_content, encoding="utf-8")
-
-    # 5. Render all scenes using Manim CLI (-a flag renders all scenes in runner script)
-    start_time = time.perf_counter()
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "manim",
-        "render",
-        quality_flag,
-        "-a",
-        "--media_dir",
-        str(temp_render_dir),
-        str(script_path),
-    ]
-
     try:
-        subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr or e.stdout
-        logger.error(f"Dynamic scene render failed: {error_msg}")
-        raise RuntimeError(f"Manim dynamic rendering failed: {error_msg}") from e
+        # 4. Generate runner script
+        script_content = _build_dynamic_scene_script_content(plan)
+        script_path = temp_render_dir / "runner_scenes.py"
+        script_path.write_text(script_content, encoding="utf-8")
 
-    # 6. Gather all rendered scene MP4 clips in sequential order
-    raw_clips = [
-        p for p in temp_render_dir.glob("**/*.mp4")
-        if "partial_movie_files" not in str(p) and p.name != f"{topic_slug}.mp4"
-    ]
+        # 5. Render all scenes using Manim CLI (-a flag renders all scenes in runner script)
+        start_time = time.perf_counter()
 
-    # Sort clips by scene prefix Scene_01_, Scene_02_, etc.
-    sorted_clips = sorted(raw_clips, key=lambda p: p.name)
+        cmd = [
+            sys.executable,
+            "-m",
+            "manim",
+            "render",
+            quality_flag,
+            "-a",
+            "--media_dir",
+            str(temp_render_dir),
+            str(script_path),
+        ]
 
-    if not sorted_clips:
-        raise RuntimeError("Manim completed but no scene MP4 clips were found.")
+        env = os.environ.copy()
+        if "PYTHONHASHSEED" in env:
+            seed_val = env.get("PYTHONHASHSEED", "")
+            if seed_val != "random" and not (seed_val.isdigit() and 0 <= int(seed_val) <= 4294967295):
+                del env["PYTHONHASHSEED"]
 
-    # 7. Concatenate clips using FFmpeg
-    concatenate_scene_clips(sorted_clips, final_video_path)
+        try:
+            subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+                env=env,
+                cwd=str(settings.BASE_DIR),
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr or e.stdout
+            logger.error(f"Dynamic scene render failed: {error_msg}")
+            raise RuntimeError(f"Manim dynamic rendering failed: {error_msg}") from e
 
-    generation_time_seconds = round(time.perf_counter() - start_time, 2)
+        # 6. Gather all rendered scene MP4 clips in sequential order
+        raw_clips = [
+            p for p in temp_render_dir.glob("**/*.mp4")
+            if "partial_movie_files" not in str(p) and p.name != f"{topic_slug}.mp4"
+        ]
 
-    # Cleanup temporary files
-    try:
-        shutil.rmtree(temp_render_dir, ignore_errors=True)
-    except Exception:
-        pass
+        # Sort clips by scene prefix Scene_01_, Scene_02_, etc.
+        sorted_clips = sorted(raw_clips, key=lambda p: p.name)
+
+        if not sorted_clips:
+            raise RuntimeError("Manim completed but no scene MP4 clips were found.")
+
+        # 7. Concatenate clips using FFmpeg
+        concatenate_scene_clips(sorted_clips, final_video_path)
+
+        generation_time_seconds = round(time.perf_counter() - start_time, 2)
+    finally:
+        # Cleanup temporary files
+        try:
+            shutil.rmtree(temp_render_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     # 8. Probe final video metrics
     duration_seconds = get_video_duration(final_video_path)

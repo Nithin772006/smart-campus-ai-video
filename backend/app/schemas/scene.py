@@ -42,6 +42,9 @@ class ScenePlanItem(BaseModel):
     layers: Optional[List[str]] = Field(None, description="Stacked architectural layers (e.g. OSI model)")
     comparison: Optional[Dict[str, List[str]]] = Field(None, description="Left vs right comparison points")
     visual_engine: str = Field("manim", description="Rendering engine")
+    character_expression: Optional[str] = Field("neutral", description="Teacher expression: neutral, friendly, happy, thinking, surprised, serious")
+    character_gesture: Optional[str] = Field("explain", description="Teacher gesture: idle, explain, point_left, point_right, point_up, point_down, celebrate, thinking")
+    character_visible: Optional[bool] = Field(True, description="Whether character is visible in this scene")
 
 
 class EducationalVideoPlan(BaseModel):

@@ -1,30 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
-const STAGES = [
-  "Understanding topic",
-  "Creating educational plan",
-  "Rendering animation",
-  "Preparing video",
+const ALL_STAGES = [
+  { id: 1, name: "Understanding topic", desc: "Analyzing academic scope and requirements" },
+  { id: 2, name: "Creating lesson", desc: "Structuring pedagogical video plan via Qwen2.5 3B" },
+  { id: 3, name: "Rendering educational visuals", desc: "Generating programmatic animation with Manim" },
+  { id: 4, name: "Generating narration", desc: "Synthesizing spoken audio with IndicF5 TTS" },
+  { id: 5, name: "Creating subtitles", desc: "Transcribing and aligning timestamps via faster-whisper" },
+  { id: 6, name: "Creating AI teacher", desc: "Preparing transparent 3D educator presenter layer", requiresCharacter: true },
+  { id: 7, name: "Composing final video", desc: "Multiplexing video, audio, subtitles, and avatar via FFmpeg" },
 ];
 
-export default function GenerationStatus({ topic }) {
-  const [currentStage, setCurrentStage] = useState(0);
-
-  useEffect(() => {
-    // Stage 0: 0s
-    // Stage 1: ~2.5s
-    // Stage 2: ~6.0s
-    // Stage 3: ~14.0s
-    const t1 = setTimeout(() => setCurrentStage(1), 2500);
-    const t2 = setTimeout(() => setCurrentStage(2), 6500);
-    const t3 = setTimeout(() => setCurrentStage(3), 14000);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, []);
+export default function GenerationStatus({ topic, characterEnabled = false }) {
+  const activeStages = ALL_STAGES.filter((s) => !s.requiresCharacter || characterEnabled);
 
   return (
     <div className="status-card">
@@ -32,35 +19,27 @@ export default function GenerationStatus({ topic }) {
         <div className="spinner"></div>
       </div>
       <h3 className="status-title">
-        Generating your educational video...
+        Generating Educational Video Pipeline
       </h3>
       <p className="status-subtitle">
         Topic: <span className="status-topic-name">"{topic}"</span>
       </p>
 
+      <div className="pipeline-notice">
+        <span>⚡ Real-Time Pipeline:</span> Each stage executes sequentially on local AI hardware without simulation.
+      </div>
+
       <div className="stages-list">
-        {STAGES.map((stageName, idx) => {
-          let statusClass = '';
-          let icon = '○';
-
-          if (idx < currentStage) {
-            statusClass = 'completed';
-            icon = '✓';
-          } else if (idx === currentStage) {
-            statusClass = 'active';
-            icon = '●';
-          } else {
-            statusClass = '';
-            icon = '○';
-          }
-
-          return (
-            <div key={idx} className={`stage-item ${statusClass}`}>
-              <span className="stage-icon">{icon}</span>
-              <span className="stage-text">{stageName}</span>
+        {activeStages.map((stage, idx) => (
+          <div key={stage.id} className="stage-item in-progress">
+            <span className="stage-num">{idx + 1}</span>
+            <div className="stage-content">
+              <span className="stage-text">{stage.name}</span>
+              <span className="stage-desc">{stage.desc}</span>
             </div>
-          );
-        })}
+            <span className="stage-pulse"></span>
+          </div>
+        ))}
       </div>
     </div>
   );

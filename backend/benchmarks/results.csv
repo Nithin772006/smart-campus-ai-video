@@ -20,3 +20,38 @@ manim,Newton's Second Law,medium,13.6,11.59,0.37
 manim_dynamic,Newton's Second Law of Motion,low,19.0,10.58,0.26
 manim_dynamic,Newton's Second Law of Motion,low,23.93,37.68,0.33
 manim_dynamic,Photosynthesis,low,34.0,47.91,0.72
+manim,Newton's Second Law,medium,13.6,15.39,0.37
+manim_dynamic,Photosynthesis,medium,23.9,25.82,0.71
+manim_dynamic,Newton's Second Law of Motion,low,19.0,17.56,0.29
+manim,Newton's Second Law,medium,13.6,10.94,0.37
+manim_dynamic,Photosynthesis,medium,23.9,23.5,0.71
+manim_dynamic,Binary Search Algorithm,low,23.93,25.0,0.44
+manim_dynamic,Binary Search Algorithm,low,23.93,23.09,0.45
+manim_dynamic,RAG (Retrieval-Augmented Generation),low,23.93,84.93,0.47
+manim_dynamic,Introduction to Retrieval-Augmented Generation,low,28.73,32.33,0.51
+manim_dynamic,Gradient Descent Algorithm,low,28.73,95.02,0.49
+manim_dynamic,Binary Search Algorithm,low,23.93,13846.96,0.44
+manim_dynamic,Retrieval-Augmented Generation,medium,28.7,50.32,1.08
+manim_dynamic,Introduction to Retrieval-Augmented Generation,medium,28.0,44.27,1.06
+manim_dynamic,Introduction to Retrieval-Augmented Generation,low,33.4,31.8,0.7
+manim_dynamic,Photosynthesis,low,34.0,29.35,0.6
+manim_dynamic,Newton's Second Law of Motion,medium,23.9,22.58,0.65
+manim_dynamic,Photosynthesis,low,34.0,157.92,0.72
+manim_dynamic,Newton's Second Law of Motion,medium,23.9,67.53,0.63
+manim,Newton's Second Law,medium,13.6,14.89,0.37
+manim_dynamic,Newton's Second Law of Motion,low,23.93,13.08,0.3
+manim,Newton's Second Law,medium,13.6,11.56,0.37
+manim_dynamic,Photosynthesis,medium,23.9,23.29,0.71
+manim_dynamic,Sorting Algorithms,low,23.93,24.96,0.31
+manim,Newton's Second Law,medium,13.6,9.27,0.37
+manim_dynamic,Newton's Second Law of Motion,low,19.0,11.15,0.29
+manim,Newton's Second Law,medium,13.6,10.26,0.37
+manim_dynamic,Photosynthesis,medium,23.9,20.82,0.71
+manim,Newton's Second Law,medium,13.6,11.19,0.37
+manim_dynamic,Newton's Second Law of Motion,low,23.93,14.41,0.35
+manim,Newton's Second Law,medium,13.6,10.25,0.37
+manim_dynamic,Photosynthesis,medium,23.9,21.47,0.71
+manim,Newton's Second Law,medium,13.6,10.8,0.37
+manim_dynamic,Binary Search Algorithm,low,23.93,24.32,0.47
+manim_dynamic,Binary Search Algorithm,low,23.93,22.38,0.44
+manim,Newton's Second Law,medium,13.6,11.56,0.37

@@ -15,6 +15,34 @@ from app.schemas.video import (
     ManimVideoResponse,
     DynamicTopicRequest,
     DynamicTopicResponse,
+    VideoCompositionRequest,
+    VideoCompositionResponse,
+    FullVideoRequest,
+    FullVideoResponse,
+)
+from app.schemas.cloud_video import (
+    CloudVideoRequest,
+    CloudVideoResponse,
+    CloudVideoStatusResponse,
+)
+from app.schemas.visual_scene import (
+    VisualEngine,
+    SceneType as VisualSceneType,
+    TeacherPosition,
+    VisualElement,
+    AnimationInstruction,
+    VisualScene,
+    VisualVideoPlan,
+    RoutedScene,
+    RoutedVideoPlan,
+    VisualPlanRequest,
+    VisualPlanResponse,
+)
+from app.schemas.render import (
+    RenderedScene,
+    RenderRequest,
+    TopicRenderRequest,
+    TopicRenderResponse,
 )
 
 __all__ = [
@@ -32,6 +60,28 @@ __all__ = [
     "ManimVideoResponse",
     "DynamicTopicRequest",
     "DynamicTopicResponse",
+    "VideoCompositionRequest",
+    "VideoCompositionResponse",
+    "FullVideoRequest",
+    "FullVideoResponse",
+    "CloudVideoRequest",
+    "CloudVideoResponse",
+    "CloudVideoStatusResponse",
+    "VisualEngine",
+    "VisualSceneType",
+    "TeacherPosition",
+    "VisualElement",
+    "AnimationInstruction",
+    "VisualScene",
+    "VisualVideoPlan",
+    "RoutedScene",
+    "RoutedVideoPlan",
+    "VisualPlanRequest",
+    "VisualPlanResponse",
+    "RenderedScene",
+    "RenderRequest",
+    "TopicRenderRequest",
+    "TopicRenderResponse",
 ]
 
 
