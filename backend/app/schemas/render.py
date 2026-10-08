@@ -34,6 +34,7 @@ class TopicRenderRequest(BaseModel):
     topic: str = Field(..., min_length=2, max_length=300, description="Educational topic to plan, route, and render", json_schema_extra={"example": "Newton's Second Law"})
     quality: Optional[str] = Field("medium_quality", description="Manim render quality (low_quality, medium_quality, high_quality)", json_schema_extra={"example": "medium_quality"})
     planner: Optional[str] = Field("auto", description="Planner selection strategy: 'auto', 'qwen', or 'rule_based'", json_schema_extra={"example": "auto"})
+    visual_style: Optional[str] = Field("auto", description="Visual style preference (educational, cinematic_educational, 3blue1brown, auto)", json_schema_extra={"example": "auto"})
 
 
 class TopicRenderResponse(BaseModel):

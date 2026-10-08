@@ -872,6 +872,114 @@ backend/generated/rendered_scenes/
 pytest tests/test_scene_renderers.py -v
 ```
 
+---
+
+## Task 9D — Final Video Composition & Synchronization
+
+The Final Video Composition layer integrates multi-engine rendered scene MP4s, master IndicF5 narration WAV, and Whisper SRT subtitles into a single, synchronized, educational MP4 video.
+
+### Core Principle: Audio is the Master Clock
+
+- **Master Timeline:** Narration audio duration is authoritative. Audio speed is **never** compressed, stretched, or modified.
+- **Visual Adaptation:** If total scene video duration is shorter than narration audio, the final frame is held (`tpad=stop_mode=clone:stop_duration=...`) to match audio duration within 0.15s.
+- **Format Normalization:** All scene videos (Manim 854x480, Avatar 1144x1374, etc.) are aspect-ratio-preserved and padded to uniform **1280x720 / 30fps / H.264 / yuv420p**.
+- **Transitions:** Professional crossfade (`xfade`) transitions between scenes without timeline drift.
+- **Subtitles:** Whisper subtitles burned into the video with safe area bottom margins.
+- **Cloud Fallback:** If cloud video generation fails (e.g. 0 HF credits / HTTP 402), an educational fallback visual is rendered and `cloud_fallback_used=True` is recorded in metadata.
+
+### Pipeline Architecture
+
+```
+                  USER TOPIC
+                      ↓
+                    QWEN
+                      ↓
+              VISUAL SCENE PLAN
+                      ↓
+                 SCENE ROUTER
+                      ↓
+               RENDERER REGISTRY
+                      ↓
+        ┌─────────────┼──────────────┐
+        ↓             ↓              ↓
+      MANIM        CLOUD VIDEO      AVATAR
+        ↓             ↓              ↓
+      MP4           MP4            MP4
+        └─────────────┼──────────────┘
+                      ↓
+              RENDERED SCENES
+                      ↓
+              MASTER NARRATION
+                      ↓
+                  WHISPER
+                      ↓
+                 SUBTITLES
+                      ↓
+              FINAL COMPOSITOR
+                      ↓
+                 FINAL MP4
+                      ↓
+          ┌───────────┴───────────┐
+          ↓                       ↓
+       timeline.json          metadata.json
+```
+
+### API Endpoint: `POST /api/video/compose`
+
+**Request:**
+```bash
+curl -X POST "http://127.0.0.1:8000/api/video/compose" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "Newton'\''s Second Law",
+    "quality": "low_quality",
+    "subtitle_enabled": true,
+    "burn_subtitles": true,
+    "transition_enabled": true
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "topic": "Newton's Second Law",
+  "video_path": "generated/videos/newtons_second_law/final.mp4",
+  "duration_seconds": 26.9,
+  "audio_duration_seconds": 26.9,
+  "sync_delta_seconds": 0.0,
+  "scene_count": 5,
+  "output_size_mb": 1.03,
+  "video_codec": "h264",
+  "audio_codec": "aac",
+  "pixel_format": "yuv420p",
+  "resolution": "1280x720",
+  "fps": 30.0,
+  "subtitle_burned": true,
+  "timeline_path": "generated/videos/newtons_second_law/timeline.json",
+  "metadata_path": "generated/videos/newtons_second_law/metadata.json",
+  "cloud_fallback_used": false
+}
+```
+
+### Output File Structure
+
+```
+backend/generated/videos/
+    └── <topic_slug>/
+        ├── final.mp4         # Master composed 1280x720 MP4
+        ├── final.srt         # Synchronized Whisper subtitles
+        ├── timeline.json     # Deterministic scene start/end timeline
+        └── metadata.json     # Complete technical and stream metadata
+```
+
+### Running Composition Tests
+
+```powershell
+pytest tests/test_final_compositor.py -v
+```
+
+
 
 
 

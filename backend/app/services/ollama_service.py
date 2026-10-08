@@ -82,6 +82,7 @@ class OllamaService:
         format: Optional[Union[str, Dict[str, Any]]] = None,
         temperature: float = 0.2,
         timeout: Optional[float] = None,
+        options: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Send a generation request to the Ollama server.
@@ -91,18 +92,23 @@ class OllamaService:
         :param format: "json" or a JSON schema dictionary for structured output.
         :param temperature: Sampling temperature (default: 0.2).
         :param timeout: Request timeout in seconds (default: settings.OLLAMA_TIMEOUT).
+        :param options: Optional extra model generation parameters (e.g. repeat_penalty, top_p).
         :return: Generated text response string.
         """
         req_timeout = timeout or self.timeout
         endpoint = f"{self.base_url}/api/generate"
 
+        gen_options: Dict[str, Any] = {
+            "temperature": temperature,
+        }
+        if options:
+            gen_options.update(options)
+
         payload: Dict[str, Any] = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": temperature,
-            },
+            "options": gen_options,
         }
 
         if system_prompt:

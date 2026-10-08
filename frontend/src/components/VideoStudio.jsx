@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { generateAvatarPreview, getVideoUrl } from '../api';
+import React, { useState, useEffect } from 'react';
+import { generateAvatarPreview, getAvatarStatus, getVideoUrl, getElevenLabsVoices } from '../api';
 
 export default function VideoStudio({
   topic,
@@ -8,8 +8,12 @@ export default function VideoStudio({
   setQuality,
   targetDuration,
   setTargetDuration,
-  voice,
+  voice = 'indicf5',
   setVoice,
+  language = 'en',
+  setLanguage,
+  voiceId = '',
+  setVoiceId,
   character,
   setCharacter,
   characterPosition,
@@ -24,12 +28,45 @@ export default function VideoStudio({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState('');
   const [previewError, setPreviewError] = useState('');
+  const [avatarProvider, setAvatarProvider] = useState('auto');
+  const [avatarStatus, setAvatarStatus] = useState(null);
+
+  // ElevenLabs Voice State
+  const [elevenLabsVoices, setElevenLabsVoices] = useState([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+
+  useEffect(() => {
+    if (character) {
+      getAvatarStatus(avatarProvider).then((st) => {
+        if (st) setAvatarStatus(st);
+      });
+    }
+  }, [character, avatarProvider]);
+
+  // Load ElevenLabs voices when ElevenLabs is selected
+  useEffect(() => {
+    if (voice === 'elevenlabs' && elevenLabsVoices.length === 0) {
+      setVoicesLoading(true);
+      getElevenLabsVoices()
+        .then((voicesList) => {
+          if (Array.isArray(voicesList) && voicesList.length > 0) {
+            setElevenLabsVoices(voicesList);
+            if (!voiceId && setVoiceId) {
+              setVoiceId(voicesList[0].voice_id);
+            }
+          }
+        })
+        .finally(() => {
+          setVoicesLoading(false);
+        });
+    }
+  }, [voice, elevenLabsVoices.length, voiceId, setVoiceId]);
 
   const handleAvatarPreviewClick = async () => {
     setPreviewLoading(true);
     setPreviewError('');
     try {
-      const data = await generateAvatarPreview(10, characterPosition);
+      const data = await generateAvatarPreview(10, characterPosition, avatarProvider);
       if (data && data.video_path) {
         setAvatarPreviewUrl(getVideoUrl(data.video_path));
       }
@@ -40,6 +77,9 @@ export default function VideoStudio({
     }
   };
 
+  const selectedVoiceName =
+    elevenLabsVoices.find((v) => v.voice_id === voiceId)?.name || 'Default Voice';
+
   return (
     <div className="video-studio-container">
       <div className="studio-header">
@@ -48,7 +88,7 @@ export default function VideoStudio({
           VIDEO STUDIO
         </div>
         <p className="studio-subtitle">
-          Configure educational visual parameters, local neural narration, and optional AI Teacher avatar.
+          Configure educational visual parameters, local neural narration or ElevenLabs cloud TTS, and optional AI Teacher avatar.
         </p>
       </div>
 
@@ -105,30 +145,98 @@ export default function VideoStudio({
         {/* Voice Selection */}
         <div className="studio-control-group">
           <label className="control-label">
-            Narration Voice
+            Voice Provider
           </label>
           <div className="pill-group">
             <button
               type="button"
+              id="voice-toggle-indicf5"
               className={`pill-btn ${voice === 'indicf5' ? 'active' : ''}`}
-              onClick={() => setVoice('indicf5')}
+              onClick={() => setVoice && setVoice('indicf5')}
               disabled={loading}
             >
               <span className="pill-dot green"></span>
-              IndicF5 — Local
+              IndicF5 Local
             </button>
             <button
               type="button"
-              className="pill-btn disabled"
-              title="ElevenLabs cloud integration is reserved for future releases."
-              disabled
+              id="voice-toggle-elevenlabs"
+              className={`pill-btn ${voice === 'elevenlabs' ? 'active' : ''}`}
+              onClick={() => setVoice && setVoice('elevenlabs')}
+              disabled={loading}
             >
-              <span className="pill-dot muted"></span>
-              ElevenLabs — Premium
-              <span className="pill-tag">Future</span>
+              <span className="pill-dot blue" style={{ background: '#38bdf8' }}></span>
+              ElevenLabs Cloud
             </button>
           </div>
         </div>
+
+        {/* When ElevenLabs is selected: Language & Voice ID Selectors */}
+        {voice === 'elevenlabs' && (
+          <>
+            <div className="studio-control-group">
+              <label className="control-label">Narration Language</label>
+              <select
+                id="elevenlabs-language-select"
+                className="studio-select"
+                value={language || 'en'}
+                onChange={(e) => setLanguage && setLanguage(e.target.value)}
+                disabled={loading}
+              >
+                <option value="en">English (en)</option>
+                <option value="ta">Tamil (ta)</option>
+                <option value="hi">Hindi (hi)</option>
+              </select>
+            </div>
+
+            <div className="studio-control-group">
+              <label className="control-label">
+                ElevenLabs Voice {voicesLoading && <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>(Loading...)</span>}
+              </label>
+              <select
+                id="elevenlabs-voice-select"
+                className="studio-select"
+                value={voiceId || ''}
+                onChange={(e) => setVoiceId && setVoiceId(e.target.value)}
+                disabled={loading}
+              >
+                {elevenLabsVoices.length > 0 ? (
+                  elevenLabsVoices.map((v) => (
+                    <option key={v.voice_id} value={v.voice_id}>
+                      {v.name} {v.category ? `(${v.category})` : ''}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Calm American Female)</option>
+                    <option value="AZnzlk1XvdvUeBnXmlld">Domi (Clear Educational)</option>
+                    <option value="EXAVITQu4vr4xnSDxMaL">Bella (Expressive Academic)</option>
+                    <option value="ErXwobaYiN019PkySvjV">Antoni (Engaging Male)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div className="elevenlabs-summary-badge" style={{
+              gridColumn: '1 / -1',
+              padding: '0.75rem 1rem',
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              borderRadius: '10px',
+              fontSize: '0.85rem',
+              color: '#e2e8f0',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '1.25rem',
+              alignItems: 'center',
+            }}>
+              <div><span style={{ color: '#94a3b8' }}>Provider:</span> <strong style={{ color: '#38bdf8' }}>ElevenLabs</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>Language:</span> <strong style={{ color: '#a7f3d0' }}>{language === 'ta' ? 'Tamil' : language === 'hi' ? 'Hindi' : 'English'}</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>Voice:</span> <strong style={{ color: '#fde68a' }}>{selectedVoiceName}</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>Subtitles:</span> <strong style={{ color: '#c084fc' }}>Direct Timestamps</strong></div>
+            </div>
+          </>
+        )}
 
         {/* Character Selection */}
         <div className="studio-control-group">
@@ -192,33 +300,77 @@ export default function VideoStudio({
           </div>
         )}
 
+        {/* Avatar Provider (When character is active) */}
+        {character && (
+          <div className="studio-control-group animate-slide">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label className="control-label" style={{ margin: 0 }}>Avatar Provider</label>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                AI Teacher:
+                {avatarStatus?.animated ? (
+                  <span style={{ color: '#10b981' }}>● Animated</span>
+                ) : (
+                  <span style={{ color: '#f59e0b' }} title={avatarStatus?.reason || 'Static teacher overlay active'}>
+                    ● Static fallback
+                  </span>
+                )}
+              </span>
+            </div>
+            <select
+              className="studio-select"
+              value={avatarProvider}
+              onChange={(e) => setAvatarProvider(e.target.value)}
+              disabled={loading}
+              id="avatar-provider-select"
+            >
+              <option value="auto">Auto</option>
+              <option value="musetalk">MuseTalk</option>
+              <option value="cloud">Cloud Avatar</option>
+              <option value="overlay">Static Teacher</option>
+            </select>
+          </div>
+        )}
+
+
         {/* Visual Style */}
         <div className="studio-control-group">
           <label className="control-label">Visual Style</label>
           <div className="pill-group">
             <button
               type="button"
-              className={`pill-btn ${visualStyle === 'academic' ? 'active' : ''}`}
-              onClick={() => setVisualStyle('academic')}
+              className={`pill-btn ${visualStyle === 'educational' ? 'active' : ''}`}
+              onClick={() => setVisualStyle('educational')}
               disabled={loading}
+              id="style-educational"
             >
-              Academic
+              Educational
             </button>
             <button
               type="button"
-              className={`pill-btn ${visualStyle === 'explainer' ? 'active' : ''}`}
-              onClick={() => setVisualStyle('explainer')}
+              className={`pill-btn ${visualStyle === 'cinematic_educational' ? 'active' : ''}`}
+              onClick={() => setVisualStyle('cinematic_educational')}
               disabled={loading}
+              id="style-cinematic"
             >
-              Explainer
+              Cinematic Educational
             </button>
             <button
               type="button"
-              className={`pill-btn ${visualStyle === 'classroom' ? 'active' : ''}`}
-              onClick={() => setVisualStyle('classroom')}
+              className={`pill-btn ${visualStyle === '3blue1brown' ? 'active' : ''}`}
+              onClick={() => setVisualStyle('3blue1brown')}
               disabled={loading}
+              id="style-3b1b"
             >
-              Classroom
+              3Blue1Brown Inspired
+            </button>
+            <button
+              type="button"
+              className={`pill-btn ${visualStyle === 'auto' ? 'active' : ''}`}
+              onClick={() => setVisualStyle('auto')}
+              disabled={loading}
+              id="style-auto"
+            >
+              Auto
             </button>
           </div>
         </div>

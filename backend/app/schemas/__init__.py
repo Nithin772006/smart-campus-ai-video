@@ -37,12 +37,24 @@ from app.schemas.visual_scene import (
     RoutedVideoPlan,
     VisualPlanRequest,
     VisualPlanResponse,
+    CameraMotion,
+    VisualEmphasis,
+    SceneTransition,
+    BackgroundStyle,
+    CinematicVisualStyle,
 )
+
 from app.schemas.render import (
     RenderedScene,
     RenderRequest,
     TopicRenderRequest,
     TopicRenderResponse,
+)
+from app.schemas.composition import (
+    SceneTimelineItem,
+    VideoTimeline,
+    CompositionRequest,
+    ComposedVideoResult,
 )
 
 __all__ = [
@@ -82,6 +94,10 @@ __all__ = [
     "RenderRequest",
     "TopicRenderRequest",
     "TopicRenderResponse",
+    "SceneTimelineItem",
+    "VideoTimeline",
+    "CompositionRequest",
+    "ComposedVideoResult",
 ]
 
 

@@ -139,6 +139,54 @@ class NarrationService:
         return t
 
     @classmethod
+    def deduplicate_consecutive_phrases(cls, text: str) -> str:
+        """
+        Removes immediate consecutive duplicate sentences or repeating word loops.
+        Preserves natural educational repetitions across different paragraphs while
+        eliminating accidental assembly duplication.
+        """
+        if not text:
+            return ""
+
+        # Step 1: Consecutive sentence deduplication
+        sentences = re.split(r"(?<=[.!?।])\s+", text.strip())
+        cleaned_sentences = []
+        prev_norm = None
+        for s in sentences:
+            s_clean = s.strip()
+            if not s_clean:
+                continue
+            norm = re.sub(r"[.!?।\s]+", "", s_clean.lower())
+            if norm and norm == prev_norm:
+                continue
+            cleaned_sentences.append(s_clean)
+            prev_norm = norm
+
+        merged = " ".join(cleaned_sentences).strip()
+
+        # Step 2: Consecutive repeating phrases of 3 to 10 words
+        words = merged.split()
+        if len(words) >= 6:
+            for phrase_len in range(3, 11):
+                i = 0
+                new_words = []
+                while i < len(words):
+                    phrase = words[i:i + phrase_len]
+                    next_phrase = words[i + phrase_len:i + 2 * phrase_len]
+                    if len(phrase) == phrase_len and phrase == next_phrase:
+                        new_words.extend(phrase)
+                        i += 2 * phrase_len
+                        while i + phrase_len <= len(words) and words[i:i + phrase_len] == phrase:
+                            i += phrase_len
+                    else:
+                        new_words.append(words[i])
+                        i += 1
+                words = new_words
+            merged = " ".join(words)
+
+        return merged
+
+    @classmethod
     def convert_formula_to_speech(cls, formula: Optional[str]) -> str:
         """
         Translates mathematical and scientific equations into spoken English.
@@ -610,7 +658,8 @@ class NarrationService:
                 target_wpm=eff_wpm,
             )
 
-        # 3. Clean and normalize
+        # 3. Clean, deduplicate, and normalize
+        full_script = cls.deduplicate_consecutive_phrases(full_script)
         full_script = re.sub(r"\.\s*\.", ".", full_script)
         full_script = re.sub(r"\s+", " ", full_script).strip()
 

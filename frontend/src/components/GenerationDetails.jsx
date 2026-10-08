@@ -167,7 +167,72 @@ export default function GenerationDetails({ result, targetDuration = 30, onFinal
           <div className="metric-label">AI Planner</div>
           <div className="metric-value" style={{ fontSize: '0.95rem' }}>{plannerLabel}</div>
         </div>
+
+        <div className="metric-item">
+          <div className="metric-label">Voice Provider</div>
+          <div className="metric-value" style={{
+            color: (result?.voice_provider === 'elevenlabs' || result?.audio_provider === 'elevenlabs') ? '#38bdf8' : '#34d399',
+            fontSize: '0.95rem'
+          }}>
+            {(result?.voice_provider === 'elevenlabs' || result?.audio_provider === 'elevenlabs') ? 'ElevenLabs' : 'IndicF5 Local'}
+          </div>
+        </div>
+
+        <div className="metric-item">
+          <div className="metric-label">Spoken Language</div>
+          <div className="metric-value" style={{
+            color: result?.localization_fallback ? '#f59e0b' : '#a7f3d0',
+            fontSize: '0.95rem'
+          }}>
+            {result?.actual_language === 'ta' ? 'Tamil' : result?.actual_language === 'hi' ? 'Hindi' : 'English'}
+            {result?.localization_fallback && ' (Fallback)'}
+          </div>
+        </div>
       </div>
+
+      {result?.localization_fallback && (
+        <div className="fallback-banner" style={{
+          margin: '1rem 0',
+          padding: '0.85rem 1rem',
+          background: 'rgba(245, 158, 11, 0.15)',
+          border: '1px solid rgba(245, 158, 11, 0.4)',
+          borderRadius: '10px',
+          color: '#fde68a',
+          fontSize: '0.9rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}>
+          <span>⚠️</span>
+          <div>
+            <strong>Localization Warning: Synthesized in English</strong>
+            <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>
+              {result.fallback_reason || `Could not produce authentic ${result?.language === 'ta' ? 'Tamil' : 'Hindi'} translation; defaulted to English.`}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {result?.fallback_used && !result?.localization_fallback && (
+        <div className="fallback-banner" style={{
+          margin: '1rem 0',
+          padding: '0.85rem 1rem',
+          background: 'rgba(239, 68, 68, 0.15)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+          borderRadius: '10px',
+          color: '#fca5a5',
+          fontSize: '0.9rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}>
+          <span>⚠️</span>
+          <div>
+            <strong>ElevenLabs failed → Using IndicF5 fallback</strong>
+            {result.fallback_reason && <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>Reason: {result.fallback_reason}</div>}
+          </div>
+        </div>
+      )}
 
       {/* TTS Narration Action and Audio Player */}
       {plan && (

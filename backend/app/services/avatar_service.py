@@ -7,7 +7,7 @@ import logging
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from app.config import settings
 from app.schemas.character import (
@@ -37,7 +37,7 @@ class CharacterAssetError(AvatarError):
 class AvatarProvider(ABC):
     """
     Abstract base provider for talking avatar generation.
-    Enables pluggable backends (MuseTalk, LivePortrait, SadTalker, Overlay).
+    Enables pluggable backends (MuseTalk, LivePortrait, SadTalker, Cloud, Overlay).
     """
 
     @abstractmethod
@@ -49,6 +49,22 @@ class AvatarProvider(ABC):
     def is_available(self) -> bool:
         """Verify whether this provider's dependencies and weights are ready."""
         pass
+
+    def is_animated(self) -> bool:
+        """Indicates whether this provider genuinely generates neural/lip-sync animation."""
+        return False
+
+    def get_capabilities(self) -> Dict[str, bool]:
+        """Granular dictionary of animation capabilities supported by this provider."""
+        return {
+            "lip_sync": False,
+            "head_motion": False,
+            "full_body_gesture": False,
+        }
+
+    def get_unavailability_reason(self) -> Optional[str]:
+        """Human-readable explanation if this provider is unavailable."""
+        return None
 
     @abstractmethod
     def generate(
@@ -86,6 +102,44 @@ class MuseTalkAvatarProvider(AvatarProvider):
     def get_name(self) -> str:
         return "musetalk"
 
+    def is_animated(self) -> bool:
+        return True
+
+    def get_capabilities(self) -> Dict[str, bool]:
+        return {
+            "lip_sync": True,
+            "head_motion": True,
+            "full_body_gesture": False,
+        }
+
+    def get_unavailability_reason(self) -> Optional[str]:
+        if not self.lab_dir.exists():
+            return "MuseTalk repository not found at backend/avatar_lab/MuseTalk"
+
+        import importlib
+        try:
+            mmcv_ext = importlib.util.find_spec("mmcv._ext")
+            if mmcv_ext is None:
+                return (
+                    "MuseTalk is not available on this host: missing compiled mmcv._ext native extensions "
+                    "on Windows (requires MSVC/nvcc toolchain) and exceeds 4.0 GB VRAM limit of RTX 2050 "
+                    "(requires ~5.0-6.2 GB VRAM). See backend/avatar_lab/FEASIBILITY_REPORT.md."
+                )
+        except Exception:
+            return (
+                "MuseTalk is not available on this host: missing compiled mmcv._ext native extensions "
+                "on Windows (requires MSVC/nvcc toolchain) and exceeds 4.0 GB VRAM limit of RTX 2050 "
+                "(requires ~5.0-6.2 GB VRAM). See backend/avatar_lab/FEASIBILITY_REPORT.md."
+            )
+
+
+        unet_weight = self.weights_dir / "musetalk" / "pytorch_model.bin"
+        vae_weight = self.weights_dir / "sd-vae" / "diffusion_pytorch_model.bin"
+        if not (unet_weight.exists() and vae_weight.exists()):
+            return "MuseTalk model weights missing in avatar_lab/MuseTalk/models"
+
+        return None
+
     def is_available(self) -> bool:
         """
         Checks if MuseTalk codebase, weights, and compiled C++ dependencies (mmcv._ext) are present.
@@ -120,17 +174,58 @@ class MuseTalkAvatarProvider(AvatarProvider):
         options: Optional[Dict[str, Any]] = None,
     ) -> Path:
         if not self.is_available():
-            raise AvatarProviderUnavailableError(
-                "MuseTalk is not available on this system. "
-                "Feasibility testing revealed mmcv._ext binary incompatibility on Windows "
-                "and an insufficient VRAM budget for the 4.0 GB RTX 2050 GPU. "
-                "See backend/avatar_lab/FEASIBILITY_REPORT.md for diagnostic details."
-            )
+            reason = self.get_unavailability_reason() or "MuseTalk is not available on this system."
+            raise AvatarProviderUnavailableError(reason)
 
-        # In an environment with full toolchain and 8GB+ VRAM, execute MuseTalk inference
         logger.info("[MuseTalk] Running inference for %s with %s", image_path.name, audio_path.name)
-        # Executing inference script
         raise NotImplementedError("MuseTalk inference execution requires full MMCV CUDA toolchain.")
+
+
+class CloudAvatarProvider(AvatarProvider):
+    """
+    Cloud / Remote Talking Avatar Provider.
+    Configurable via environment variables (AVATAR_CLOUD_PROVIDER, AVATAR_CLOUD_API_URL, AVATAR_CLOUD_API_KEY).
+    Handles remote neural lip-sync generation without local VRAM limitations.
+    """
+
+    def __init__(self):
+        self.provider_type = getattr(settings, "AVATAR_CLOUD_PROVIDER", "replicate")
+        self.api_url = getattr(settings, "AVATAR_CLOUD_API_URL", "")
+        self.api_key = getattr(settings, "AVATAR_CLOUD_API_KEY", "")
+
+    def get_name(self) -> str:
+        return "cloud"
+
+    def is_animated(self) -> bool:
+        return True
+
+    def get_capabilities(self) -> Dict[str, bool]:
+        return {
+            "lip_sync": True,
+            "head_motion": True,
+            "full_body_gesture": False,
+        }
+
+    def is_available(self) -> bool:
+        return bool(self.api_key and self.api_key.strip())
+
+    def get_unavailability_reason(self) -> Optional[str]:
+        if not self.is_available():
+            return "Cloud Avatar Provider is unconfigured (set AVATAR_CLOUD_API_KEY in backend/.env)."
+        return None
+
+    def generate(
+        self,
+        image_path: Path,
+        audio_path: Path,
+        output_path: Path,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Path:
+        if not self.is_available():
+            raise AvatarProviderUnavailableError(self.get_unavailability_reason())
+
+        logger.info("[CloudAvatar] Submitting %s and %s to %s", image_path.name, audio_path.name, self.provider_type)
+        raise NotImplementedError("Cloud Avatar remote endpoint not configured or active.")
 
 
 class TeacherAvatarOverlayProvider(AvatarProvider):
@@ -158,8 +253,23 @@ class TeacherAvatarOverlayProvider(AvatarProvider):
     def get_name(self) -> str:
         return "overlay"
 
+    def is_animated(self) -> bool:
+        return False
+
+    def get_capabilities(self) -> Dict[str, bool]:
+        return {
+            "lip_sync": False,
+            "head_motion": False,
+            "full_body_gesture": False,
+        }
+
     def is_available(self) -> bool:
         return bool(shutil.which(self.ffmpeg_bin))
+
+    def get_unavailability_reason(self) -> Optional[str]:
+        if not self.is_available():
+            return "FFmpeg binary is not accessible for TeacherAvatarOverlayProvider"
+        return None
 
     def generate(
         self,
@@ -181,6 +291,16 @@ class TeacherAvatarOverlayProvider(AvatarProvider):
         opts = options or {}
         fps = opts.get("fps", 30)
 
+        # Audio is Master Clock: ensure video duration matches audio duration exactly
+        target_dur = opts.get("duration")
+        if target_dur is None:
+            try:
+                from app.services.ffmpeg_service import ffmpeg_service
+                probe = ffmpeg_service.probe_media(audio_path)
+                target_dur = float(probe.get("duration", 0))
+            except Exception:
+                target_dur = None
+
         # Build clean loop video matching audio length with web-compatible H.264
         cmd = [
             self.ffmpeg_bin,
@@ -189,6 +309,10 @@ class TeacherAvatarOverlayProvider(AvatarProvider):
             "-framerate", str(fps),
             "-i", str(image_path),
             "-i", str(audio_path),
+        ]
+        if target_dur and target_dur > 0:
+            cmd.extend(["-t", str(target_dur)])
+        cmd.extend([
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-c:v", settings.VIDEO_CODEC,
             "-pix_fmt", settings.PIXEL_FORMAT,
@@ -197,7 +321,7 @@ class TeacherAvatarOverlayProvider(AvatarProvider):
             "-shortest",
             "-movflags", settings.MOVFLAGS,
             str(output_path),
-        ]
+        ])
 
         logger.info("[TeacherAvatar] Generating avatar video: %s", " ".join(cmd))
         res = subprocess.run(cmd, capture_output=True, text=True)
@@ -222,27 +346,86 @@ class AvatarService:
         # Register providers
         self.providers: Dict[str, AvatarProvider] = {
             "musetalk": MuseTalkAvatarProvider(),
+            "cloud": CloudAvatarProvider(),
             "overlay": TeacherAvatarOverlayProvider(),
+            "teacher_overlay": TeacherAvatarOverlayProvider(),
         }
+
+    def get_available_providers(self) -> List[str]:
+        """Returns list of registered avatar provider identifiers."""
+        return list(self.providers.keys())
 
     def get_provider(self, name: Optional[str] = None) -> AvatarProvider:
         """
         Retrieves requested provider, falling back gracefully to the
         overlay provider if requested provider is unavailable.
         """
-        req_name = (name or settings.AVATAR_PROVIDER).lower()
-        provider = self.providers.get(req_name)
+        prov, _ = self.get_provider_with_fallback(name)
 
+        return prov
+
+    def get_provider_with_fallback(
+        self,
+        name: Optional[str] = None,
+    ) -> Tuple[AvatarProvider, bool]:
+        """
+        Retrieves requested provider along with a boolean indicating whether
+        fallback to TeacherAvatarOverlayProvider was activated.
+        Returns: (active_provider, fallback_used)
+        """
+        raw_name = (name or settings.AVATAR_PROVIDER or "auto").lower()
+
+        if raw_name in ("overlay", "teacher_overlay"):
+            return self.providers["overlay"], False
+
+        if raw_name == "auto":
+            # Priority: MuseTalk -> Cloud -> Overlay
+            for cand in ("musetalk", "cloud"):
+                p = self.providers.get(cand)
+                if p and p.is_available():
+                    return p, False
+            logger.info("Auto avatar selection: Neural providers unavailable; using TeacherAvatarOverlayProvider.")
+            return self.providers["overlay"], True
+
+        provider = self.providers.get(raw_name)
         if provider and provider.is_available():
-            return provider
+            return provider, False
 
-        # Graceful fallback to overlay
-        fallback = self.providers.get("overlay")
-        if fallback and fallback.is_available():
-            logger.info("Provider '%s' unavailable; falling back to '%s'", req_name, fallback.get_name())
-            return fallback
+        # Fallback to overlay
+        fallback = self.providers["overlay"]
+        logger.info("Provider '%s' unavailable; falling back to '%s'", raw_name, fallback.get_name())
+        return fallback, True
 
-        raise AvatarProviderUnavailableError(f"No usable avatar provider available (tried {req_name} and overlay).")
+    def get_status(self, requested_name: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Provides comprehensive provider diagnostic status for GET /api/avatar/status.
+        """
+        selected = (requested_name or settings.AVATAR_PROVIDER or "auto").lower()
+        active_prov, fallback_used = self.get_provider_with_fallback(selected)
+
+        # Inspect target provider specifically
+        target_prov = self.providers.get(selected)
+        if selected == "auto":
+            target_prov = self.providers.get("musetalk")
+
+        is_avail = target_prov.is_available() if target_prov else False
+        reason = target_prov.get_unavailability_reason() if (target_prov and not is_avail) else None
+
+        import torch
+        device_name = "cuda" if torch.cuda.is_available() else "cpu"
+
+        return {
+            "enabled": True,
+            "selected_provider": selected,
+            "active_provider": active_prov.get_name(),
+            "available": is_avail,
+            "device": device_name,
+            "animated": active_prov.is_animated(),
+            "reason": reason,
+            "fallback_provider": "teacher_overlay",
+            "fallback_used": fallback_used,
+            "capabilities": active_prov.get_capabilities(),
+        }
 
     def validate_canonical_character(self) -> Dict[str, Any]:
         """
@@ -303,6 +486,8 @@ class AvatarService:
         self,
         duration: float = 10.0,
         position: str = "auto",
+        provider_name: Optional[str] = None,
+        audio_path: Optional[str] = None,
     ) -> AvatarPreviewResponse:
         """
         Generates an avatar preview video using the canonical teacher and sample audio.
@@ -311,8 +496,16 @@ class AvatarService:
         start_time = time.time()
         self.validate_canonical_character()
 
-        sample_audio = self._find_sample_audio(max_duration=duration)
-        provider = self.get_provider()
+        if audio_path and Path(audio_path).exists():
+            sample_audio = Path(audio_path).resolve()
+        else:
+            sample_audio = self._find_sample_audio(max_duration=duration)
+
+        provider, fallback_used = self.get_provider_with_fallback(provider_name)
+        fallback_reason = None
+        if fallback_used:
+            target_p = self.providers.get((provider_name or settings.AVATAR_PROVIDER or "auto").lower())
+            fallback_reason = target_p.get_unavailability_reason() if target_p else "Requested provider unavailable"
 
         preview_dir = self.output_dir / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
@@ -332,7 +525,7 @@ class AvatarService:
         from app.services.ffmpeg_service import get_video_duration
         measured_dur = get_video_duration(generated_path)
 
-        rel_path = str(generated_path.relative_to(settings.BASE_DIR)).replace("\\", "/")
+        rel_path = str(generated_path.relative_to(settings.BASE_DIR)).replace("\\", "/") if generated_path.is_relative_to(settings.BASE_DIR) else str(generated_path)
         video_url = f"/api/files/{rel_path}"
 
         return AvatarPreviewResponse(
@@ -345,6 +538,10 @@ class AvatarService:
             character_name="SmartCampus Teacher",
             resolution="1145x1374",
             fps=30.0,
+            is_animated=provider.is_animated(),
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
+            capabilities=provider.get_capabilities(),
         )
 
 

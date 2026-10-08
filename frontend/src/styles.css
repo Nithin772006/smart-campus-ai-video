@@ -1071,3 +1071,513 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ==========================================================================
+   Real-Time Pipeline Progress System (Task 9F UI Enhancement)
+   ========================================================================== */
+
+.pipeline-progress-container {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 1.75rem 2rem;
+  box-shadow: 0 25px 50px -15px rgba(0, 0, 0, 0.6);
+  margin-bottom: 2rem;
+  animation: fadeIn 0.4s ease;
+}
+
+.pipeline-header {
+  margin-bottom: 1.25rem;
+}
+
+.pipeline-title-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.pipeline-brand-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.spinner-mini {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid rgba(99, 102, 241, 0.2);
+  border-top-color: var(--accent-primary);
+  border-right-color: var(--accent-secondary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.icon-complete-badge {
+  font-size: 1.3rem;
+  color: #10b981;
+  font-weight: 800;
+}
+
+.icon-error-badge {
+  font-size: 1.3rem;
+  color: #ef4444;
+  font-weight: 800;
+}
+
+.pipeline-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.9rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+}
+
+.pipeline-active-badge .badge-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pipeline-active-badge .badge-text.running {
+  color: #a5b4fc;
+}
+
+.pipeline-active-badge .badge-text.success {
+  color: #34d399;
+}
+
+.pipeline-active-badge .badge-text.error {
+  color: #f87171;
+}
+
+.pipeline-timer-badge {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pipeline-timer-badge .timer-val {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+/* Overall Progress Bar */
+.overall-progress-wrapper {
+  margin-bottom: 0.5rem;
+}
+
+.overall-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.overall-label {
+  color: #e2e8f0;
+  letter-spacing: 0.02em;
+}
+
+.overall-percent {
+  color: #a5b4fc;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.overall-progress-track {
+  width: 100%;
+  height: 9px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.overall-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #10b981 100%);
+  border-radius: 999px;
+  transition: width 300ms ease;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+}
+
+.overall-progress-fill.is-complete {
+  background: linear-gradient(90deg, #059669 0%, #10b981 100%);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.6);
+}
+
+.overall-progress-fill.is-error {
+  background: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+}
+
+/* Completion Success Banner */
+.completion-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 12px;
+  margin-bottom: 1.25rem;
+  animation: fadeIn 0.4s ease;
+}
+
+.completion-success-banner .banner-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.completion-success-banner .banner-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.completion-success-banner .banner-title {
+  color: #34d399;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.completion-success-banner .banner-subtitle {
+  color: #a7f3d0;
+  font-size: 0.82rem;
+  opacity: 0.9;
+}
+
+/* Stage Error Banner */
+.stage-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.2rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 12px;
+  margin-bottom: 1.25rem;
+  color: #fca5a5;
+  animation: fadeIn 0.4s ease;
+}
+
+.stage-error-banner .banner-icon {
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: #ef4444;
+}
+
+.stage-error-banner .banner-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.stage-error-banner .banner-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.stage-error-banner .banner-subtitle {
+  font-size: 0.8rem;
+  color: #f87171;
+}
+
+/* 7 Per-Stage Cards List */
+.stages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.stage-card-v2 {
+  padding: 0.85rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(15, 23, 42, 0.5);
+  transition: all 0.25s ease;
+}
+
+/* State: Pending */
+.stage-card-v2.status-pending {
+  background: rgba(15, 23, 42, 0.3);
+  border-color: rgba(255, 255, 255, 0.03);
+  opacity: 0.65;
+}
+
+/* State: Running */
+.stage-card-v2.status-running {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: rgba(99, 102, 241, 0.55);
+  box-shadow: 0 0 20px -3px rgba(99, 102, 241, 0.3);
+  opacity: 1;
+  animation: pulseGlow 2.5s infinite;
+}
+
+@keyframes pulseGlow {
+  0% { border-color: rgba(99, 102, 241, 0.4); box-shadow: 0 0 15px -3px rgba(99, 102, 241, 0.2); }
+  50% { border-color: rgba(139, 92, 246, 0.7); box-shadow: 0 0 22px 0px rgba(139, 92, 246, 0.35); }
+  100% { border-color: rgba(99, 102, 241, 0.4); box-shadow: 0 0 15px -3px rgba(99, 102, 241, 0.2); }
+}
+
+/* State: Completed */
+.stage-card-v2.status-completed {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.22);
+  opacity: 0.95;
+}
+
+/* State: Error */
+.stage-card-v2.status-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.4);
+  opacity: 1;
+}
+
+/* Stage Header Row */
+.stage-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stage-left-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-index-pill {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.stage-index-pill.status-pending {
+  background: rgba(255, 255, 255, 0.06);
+  color: #64748b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stage-index-pill.status-running {
+  background: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+}
+
+.stage-index-pill.status-completed {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.stage-index-pill.status-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.stage-names-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stage-primary-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-card-v2.status-pending .stage-primary-name {
+  color: #94a3b8;
+}
+
+.stage-secondary-desc {
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-right-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-shrink: 0;
+}
+
+.status-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-pill.status-pending {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.status-pill.status-running {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
+.status-pill.status-completed {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-pill.status-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.stage-pct-label {
+  font-size: 0.88rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  min-width: 42px;
+  text-align: right;
+}
+
+.stage-pct-label.status-pending {
+  color: #64748b;
+}
+
+.stage-pct-label.status-running {
+  color: #a5b4fc;
+}
+
+.stage-pct-label.status-completed {
+  color: #34d399;
+}
+
+.stage-pct-label.status-error {
+  color: #f87171;
+}
+
+/* Stage Progress Bar */
+.stage-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 0.55rem 0 0.45rem;
+}
+
+.stage-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 300ms ease;
+}
+
+.stage-progress-fill.status-pending {
+  background: transparent;
+  width: 0% !important;
+}
+
+.stage-progress-fill.status-running {
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+}
+
+.stage-progress-fill.status-completed {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.stage-progress-fill.status-error {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+/* Stage Footer Row */
+.stage-footer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.76rem;
+  min-height: 1.1rem;
+}
+
+.stage-status-msg {
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+}
+
+.stage-status-msg.status-running {
+  color: #c7d2fe;
+}
+
+.stage-status-msg.status-completed {
+  color: #6ee7b7;
+}
+
+.stage-status-msg.status-error {
+  color: #fca5a5;
+}
+
+.stage-live-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  box-shadow: 0 0 8px #8b5cf6;
+  animation: pulse 1.4s infinite;
+  flex-shrink: 0;
+}
+
+

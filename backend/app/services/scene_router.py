@@ -58,7 +58,7 @@ class SceneRouter:
             cloud_generation_required = False
 
         # RULE 2: Algorithms, Flowcharts, Diagrams, Processes, and Timelines
-        elif scene_type in (SceneType.ALGORITHM, SceneType.DIAGRAM, SceneType.PROCESS, SceneType.TIMELINE, SceneType.COMPARISON):
+        elif scene_type in (SceneType.ALGORITHM, SceneType.DIAGRAM, SceneType.PROCESS, SceneType.TIMELINE, SceneType.COMPARISON) and requested_engine != VisualEngine.MIXED:
             if requested_engine == VisualEngine.CLOUD_VIDEO:
                 selected_engine = VisualEngine.MANIM
                 routing_reason = (
@@ -95,6 +95,12 @@ class SceneRouter:
             fallback_engine = VisualEngine.MANIM  # If cloud video unavailable/unfunded, fall back to vector diagram
             cloud_generation_required = True
 
+            # Task 9F: Enforce short cloud duration (3–8s)
+            if scene.duration_seconds > 8.0:
+                scene.duration_seconds = 8.0
+            elif scene.duration_seconds < 3.0:
+                scene.duration_seconds = 3.0
+
             # Ensure cloud prompt is available
             if not scene.visual_prompt or not scene.visual_prompt.strip():
                 scene.visual_prompt = (
@@ -110,6 +116,9 @@ class SceneRouter:
             routing_reason = "Composite layout combining primary Manim educational graphics with secondary AI teacher overlay."
             fallback_engine = VisualEngine.MANIM
             cloud_generation_required = False
+            # Ensure teacher is docked to side so central diagrams remain visible
+            if scene.teacher_position in (TeacherPosition.NONE, TeacherPosition.CENTER):
+                scene.teacher_position = TeacherPosition.RIGHT
 
         # RULE 6: Title and Transition Cards
         elif scene_type in (SceneType.TITLE, SceneType.TRANSITION):

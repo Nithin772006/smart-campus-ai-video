@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     AVATAR_CHARACTER: str = "teacher"
     AVATAR_DEVICE: str = "auto"
     AVATAR_MAX_VRAM_GB: int = 4
+    AVATAR_CLOUD_PROVIDER: str = "replicate"
+    AVATAR_CLOUD_API_URL: str = ""
+    AVATAR_CLOUD_API_KEY: str = ""
 
     # Hugging Face Video Configuration (Task 9A Proof of Concept)
     HF_TOKEN: str = ""
@@ -83,6 +86,14 @@ class Settings(BaseSettings):
     HF_VIDEO_PROVIDER: str = "fal-ai"
     HF_VIDEO_MODEL: str = "Wan-AI/Wan2.2-TI2V-5B"
     HF_VIDEO_TIMEOUT: float = 300.0
+
+    # ElevenLabs Multilingual TTS Configuration (Task 9G-A)
+    ELEVENLABS_ENABLED: bool = False
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_TTS_MODEL: str = "eleven_multilingual_v2"
+    ELEVENLABS_VOICE_ID: str = ""
+    ELEVENLABS_LANGUAGE: str = "en"
+    ELEVENLABS_TIMEOUT: float = 120.0
 
     @property
     def cors_origins_list(self) -> List[str]:
@@ -110,7 +121,10 @@ class Settings(BaseSettings):
             directory.mkdir(parents=True, exist_ok=True)
 
     class Config:
-        env_file = ".env"
+        env_file = (
+            str(Path(__file__).resolve().parent.parent / ".env"),
+            ".env",
+        )
         env_file_encoding = "utf-8"
         extra = "ignore"
 

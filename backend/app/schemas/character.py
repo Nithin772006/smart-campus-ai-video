@@ -56,8 +56,31 @@ class CharacterSpec(BaseModel):
     intended_use: str = "talking_avatar"
 
 
+class AvatarCapabilities(BaseModel):
+    """Granular feature capabilities of an avatar provider."""
+    lip_sync: bool = False
+    head_motion: bool = False
+    full_body_gesture: bool = False
+
+
+class AvatarStatusResponse(BaseModel):
+    """Response schema for GET /api/avatar/status."""
+    enabled: bool = True
+    selected_provider: str = "auto"
+    active_provider: str = "teacher_overlay"
+    available: bool = True
+    device: str = "cuda"
+    animated: bool = False
+    reason: Optional[str] = None
+    fallback_provider: str = "teacher_overlay"
+    capabilities: AvatarCapabilities = Field(default_factory=AvatarCapabilities)
+
+
 class AvatarPreviewRequest(BaseModel):
     """Request schema for POST /api/avatar/preview."""
+    audio_path: Optional[str] = Field(None, description="Optional path to existing narration audio WAV")
+    character: Optional[str] = Field("teacher", description="Character identifier (defaults to teacher)")
+    provider: Optional[str] = Field("auto", description="Avatar provider: auto, musetalk, cloud, or overlay")
     duration: Optional[float] = Field(10.0, ge=1.0, le=60.0, description="Preview duration in seconds")
     position: Optional[CharacterPosition] = Field(CharacterPosition.AUTO, description="Avatar screen position")
 
@@ -65,7 +88,7 @@ class AvatarPreviewRequest(BaseModel):
 class AvatarPreviewResponse(BaseModel):
     """Response schema for POST /api/avatar/preview."""
     success: bool = Field(True, description="Generation status flag")
-    provider: str = Field(..., description="Avatar provider used (e.g. musetalk or fallback overlay)")
+    provider: str = Field(..., description="Avatar provider used (e.g. musetalk, cloud, or teacher_overlay)")
     video_path: str = Field(..., description="Path to generated avatar preview video")
     video_url: Optional[str] = Field(None, description="Direct URL to stream or view the preview video")
     duration_seconds: float = Field(..., description="Measured duration of the preview video in seconds")
@@ -73,3 +96,8 @@ class AvatarPreviewResponse(BaseModel):
     character_name: str = Field("SmartCampus Teacher", description="Character identifier")
     resolution: Optional[str] = Field(None, description="Output video resolution (e.g., 1280x720)")
     fps: Optional[float] = Field(None, description="Frame rate of generated preview")
+    is_animated: bool = Field(False, description="Genuinely animated flag (false for static overlay)")
+    fallback_used: bool = Field(False, description="Whether fallback overlay was applied")
+    fallback_reason: Optional[str] = Field(None, description="Reason if fallback was used")
+    capabilities: Optional[Dict[str, bool]] = Field(None, description="Capabilities supported by the rendering provider")
+

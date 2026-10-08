@@ -1,10 +1,12 @@
+from typing import Optional
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
 from app.schemas.character import (
     AvatarPreviewRequest,
     AvatarPreviewResponse,
+    AvatarStatusResponse,
     CharacterSpec,
 )
 from app.services.avatar_service import (
@@ -17,6 +19,19 @@ from app.services.avatar_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/status", response_model=AvatarStatusResponse, summary="Get Avatar Provider Status")
+async def get_avatar_status(provider: Optional[str] = Query(None, description="Optional provider identifier to probe")):
+    """
+    Returns current avatar provider status, hardware availability, capabilities, and fallback info.
+    """
+    try:
+        status_info = await run_in_threadpool(avatar_service.get_status, requested_name=provider)
+        return AvatarStatusResponse(**status_info)
+    except Exception as e:
+        logger.exception("Failed to retrieve avatar status")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve avatar status: {str(e)}")
 
 
 @router.get("/character", summary="Get Canonical Character Metadata")
@@ -48,6 +63,8 @@ async def generate_avatar_preview(request: AvatarPreviewRequest):
             avatar_service.generate_preview,
             duration=request.duration or 10.0,
             position=position_str,
+            provider_name=request.provider,
+            audio_path=request.audio_path,
         )
         return response
     except AvatarProviderUnavailableError as apue:
@@ -59,3 +76,4 @@ async def generate_avatar_preview(request: AvatarPreviewRequest):
     except Exception as e:
         logger.exception("Avatar preview generation failed")
         raise HTTPException(status_code=500, detail=f"Avatar preview generation failed: {str(e)}")
+

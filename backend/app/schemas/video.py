@@ -167,6 +167,47 @@ class VideoCompositionResponse(BaseModel):
     pixel_format: Optional[str] = Field(None, description="Pixel format")
 
 
+class ElevenLabsVoiceItem(BaseModel):
+    voice_id: str = Field(..., description="Unique ElevenLabs voice ID")
+    name: str = Field(..., description="Voice display name")
+    category: Optional[str] = Field("premade", description="Voice category (premade, cloned, generated)")
+    labels: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Voice descriptive labels")
+    preview_url: Optional[str] = Field(None, description="Preview audio sample URL")
+    description: Optional[str] = Field(None, description="Voice summary or style description")
+
+
+class ElevenLabsVoicesResponse(BaseModel):
+    success: bool = Field(True, description="Query status flag")
+    voices: List[ElevenLabsVoiceItem] = Field(default_factory=list, description="List of available ElevenLabs voices")
+    count: int = Field(0, description="Total voices returned")
+
+
+class ElevenLabsTTSRequest(BaseModel):
+    text: str = Field(..., description="Text content to synthesize to audio", example="Newton's Second Law states that force equals mass times acceleration.")
+    voice_id: Optional[str] = Field(None, description="ElevenLabs voice identifier")
+    language: Optional[str] = Field("en", description="Target language code: en, ta, hi")
+    timestamps: Optional[bool] = Field(True, description="Whether to request character-level timestamps")
+    topic: Optional[str] = Field(None, description="Educational topic name for directory slug")
+
+
+class ElevenLabsTTSResponse(BaseModel):
+    success: bool = Field(True, description="Synthesis status flag")
+    provider: str = Field("elevenlabs", description="TTS provider name")
+    audio_path: str = Field(..., description="Relative path to generated WAV/MP3 audio file")
+    mp3_path: Optional[str] = Field(None, description="Relative path to generated MP3 file")
+    duration_seconds: float = Field(..., description="Exact audio duration in seconds")
+    language: str = Field("en", description="Spoken language code")
+    voice_id: str = Field(..., description="ElevenLabs voice ID used")
+    model: str = Field("eleven_multilingual_v2", description="ElevenLabs model used")
+    timestamp_data_available: bool = Field(True, description="Whether character-level alignment data is present")
+    alignment: Optional[Dict[str, Any]] = Field(None, description="Alignment character and timestamp data")
+    sample_rate: Optional[int] = Field(None, description="Audio sample rate in Hz")
+    text_length: Optional[int] = Field(None, description="Input text character count")
+    generation_time_seconds: Optional[float] = Field(None, description="Time taken to generate audio")
+    fallback_used: Optional[bool] = Field(False, description="Whether fallback TTS was used")
+    fallback_reason: Optional[str] = Field(None, description="Reason for fallback if applicable")
+
+
 class FullVideoRequest(BaseModel):
     topic: Optional[str] = Field(None, description="Educational topic to plan, render, narrate, subtitle, and compose")
     question: Optional[str] = Field(None, description="Alternative phrasing for educational topic")
@@ -177,12 +218,18 @@ class FullVideoRequest(BaseModel):
     character: Optional[bool] = Field(False, description="Whether to include the AI Teacher avatar layer")
     character_position: Optional[str] = Field("auto", description="Position of AI Teacher avatar: auto, left, right")
     visual_style: Optional[str] = Field("academic", description="Visual style: academic, explainer, classroom")
+    voice_provider: Optional[str] = Field("indicf5", description="TTS voice provider: 'indicf5' or 'elevenlabs'")
+    audio_provider: Optional[str] = Field(None, description="Alias for voice_provider")
+    voice_id: Optional[str] = Field(None, description="Voice ID if using ElevenLabs")
 
     def get_prompt(self) -> str:
         prompt = (self.topic or self.question or "").strip()
         if not prompt:
             raise ValueError("Either 'topic' or 'question' must be provided.")
         return prompt
+
+    def get_voice_provider(self) -> str:
+        return (self.audio_provider or self.voice_provider or "indicf5").strip().lower()
 
 
 class FullVideoResponse(BaseModel):
@@ -218,6 +265,14 @@ class FullVideoResponse(BaseModel):
     character_enabled: Optional[bool] = Field(False, description="Whether AI teacher character was included")
     character_position: Optional[str] = Field(None, description="Position used for AI teacher character")
     character_video_path: Optional[str] = Field(None, description="Path to generated character video track")
+    voice_provider: Optional[str] = Field("indicf5", description="Voice provider used")
+    voice_id: Optional[str] = Field(None, description="Voice ID used")
+    language: Optional[str] = Field("en", description="Requested narration language")
+    actual_language: Optional[str] = Field("en", description="Actual language synthesized")
+    fallback_used: Optional[bool] = Field(False, description="Whether fallback TTS was used")
+    fallback_reason: Optional[str] = Field(None, description="Reason for fallback if used")
+    localization_fallback: Optional[bool] = Field(False, description="Whether localization fell back to English")
+
 
 
 

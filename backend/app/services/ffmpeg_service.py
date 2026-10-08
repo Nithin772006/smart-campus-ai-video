@@ -419,6 +419,8 @@ class FFmpegService:
         else:
             # Auto-derive topic directory from video or audio parent directory
             topic_slug = resolved_audio.parent.name
+            if topic_slug == "elevenlabs" and resolved_audio.parent.parent.name not in ("audio", ""):
+                topic_slug = resolved_audio.parent.parent.name
             if not topic_slug or topic_slug == "audio":
                 topic_slug = resolved_video.parent.name
             if not topic_slug or topic_slug in ("scenes", "videos"):
@@ -468,6 +470,9 @@ class FFmpegService:
         # Build video filters - adjust video timeline to match master audio clock
         video_filters: List[str] = []
 
+        # 1. Video normalization filter (guarantee 1280x720, 30fps output)
+        video_filters.append("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1")
+
         if audio_dur > video_dur:
             diff = round(audio_dur - video_dur, 3)
             video_filters.append(f"tpad=stop_mode=clone:stop_duration={diff}")
@@ -489,31 +494,46 @@ class FFmpegService:
             "-i", str(resolved_audio),
         ]
 
+        from app.services.safe_area import build_ffmpeg_subtitle_filter
+
         if character_enabled and resolved_character:
             pos = (character_position or "auto").lower()
             if pos not in ("left", "right"):
                 pos = "right"  # auto defaults to right
 
-            # Configure subtitle margins so subtitles never collide with teacher
-            if should_burn and resolved_subtitle:
-                escaped_srt = resolved_subtitle.as_posix().replace(":", r"\:")
-                if pos == "left":
-                    sub_style = "FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=25,MarginL=360,MarginR=50"
-                else:
-                    sub_style = "FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=25,MarginR=360,MarginL=50"
-                video_filters.append(f"subtitles='{escaped_srt}':force_style='{sub_style}'")
-                logger.info("[FFmpeg] Burning positioned subtitles for character %s", pos)
-
             base_chain = ",".join(video_filters) if video_filters else "null"
-            width = video_probe.get("width") or 1280
-            char_w = max(280, int(width * 0.26))
+            width = 1280
+            char_w = max(280, int(width * 0.26))  # 332px
 
             if pos == "left":
                 overlay_coords = "x=20:y=H-h"
             else:
                 overlay_coords = "x=W-w-10:y=H-h"
 
-            filter_complex = f"[0:v]{base_chain}[vbase];[2:v]scale={char_w}:-1[vchar];[vbase][vchar]overlay={overlay_coords}:shortest=1[vout]"
+            # Filter complex: Scale base -> overlay teacher -> burn subtitles on top
+            if should_burn and resolved_subtitle:
+                sub_filter_str = build_ffmpeg_subtitle_filter(
+                    resolved_subtitle,
+                    video_width=1280,
+                    video_height=720,
+                    font_size=24,
+                    margin_v=40,
+                    margin_side=80,
+                )
+                filter_complex = (
+                    f"[0:v]{base_chain}[vbase];"
+                    f"[2:v]scale={char_w}:-1[vchar];"
+                    f"[vbase][vchar]overlay={overlay_coords}:shortest=1[vcomp];"
+                    f"[vcomp]{sub_filter_str}[vout]"
+                )
+                logger.info("[FFmpeg] Compositing teacher (%s) with bottom-centered subtitles", pos)
+            else:
+                filter_complex = (
+                    f"[0:v]{base_chain}[vbase];"
+                    f"[2:v]scale={char_w}:-1[vchar];"
+                    f"[vbase][vchar]overlay={overlay_coords}:shortest=1[vout]"
+                )
+                logger.info("[FFmpeg] Compositing teacher (%s) without subtitles", pos)
 
             cmd.extend([
                 "-loop", "1",
@@ -525,10 +545,16 @@ class FFmpegService:
         else:
             # Standard composition without character
             if should_burn and resolved_subtitle:
-                escaped_srt = resolved_subtitle.as_posix().replace(":", r"\:")
-                style = "FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=25"
-                video_filters.append(f"subtitles='{escaped_srt}':force_style='{style}'")
-                logger.info("[FFmpeg] Burning SRT subtitles: %s", resolved_subtitle.name)
+                sub_filter_str = build_ffmpeg_subtitle_filter(
+                    resolved_subtitle,
+                    video_width=1280,
+                    video_height=720,
+                    font_size=24,
+                    margin_v=40,
+                    margin_side=80,
+                )
+                video_filters.append(sub_filter_str)
+                logger.info("[FFmpeg] Burning bottom-centered horizontal subtitles: %s", resolved_subtitle.name)
 
             if video_filters:
                 cmd.extend(["-vf", ",".join(video_filters)])

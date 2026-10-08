@@ -646,4 +646,69 @@ class RuleBasedAcademicPlanner(AcademicPlanner):
                     },
                 ],
             },
+
+            # 11. NETWORKING: OSI Model (Task 9F Visual Progression)
+            "osimodel": {
+                "canonical_name": "OSI Model",
+                "title": "The 7 Layers of the OSI Model",
+                "level": "intermediate",
+                "domain": AcademicDomain.COMPUTER_SCIENCE,
+                "summary": "Seven-layer reference model for open systems interconnection.",
+                "scenes": [
+                    {
+                        "type": SceneType.TITLE,
+                        "duration": 4.0,
+                        "title": "The OSI Model",
+                        "subtitle": "7-Layer Network Architecture",
+                    },
+                    {
+                        "type": SceneType.HIERARCHY,
+                        "duration": 7.0,
+                        "title": "The 7 Network Layers",
+                        "layers": [
+                            "Layer 7: Application",
+                            "Layer 6: Presentation",
+                            "Layer 5: Session",
+                            "Layer 4: Transport",
+                            "Layer 3: Network",
+                            "Layer 2: Data Link",
+                            "Layer 1: Physical",
+                        ],
+                    },
+                    {
+                        "type": SceneType.PROCESS,
+                        "duration": 6.5,
+                        "title": "Physical & Data Link",
+                        "steps": [
+                            "Physical (L1): Raw electrical bits over cable & radio",
+                            "Data Link (L2): MAC frames & switches on local LAN",
+                        ],
+                    },
+                    {
+                        "type": SceneType.PROCESS,
+                        "duration": 7.0,
+                        "title": "Network & Transport",
+                        "steps": [
+                            "Network (L3): IP packets routed across internet",
+                            "Transport (L4): TCP port segments & error-free delivery",
+                        ],
+                    },
+                    {
+                        "type": SceneType.BULLET_POINTS,
+                        "duration": 6.5,
+                        "title": "Upper Session & Application",
+                        "bullets": [
+                            "Session (L5): Dialog checkpoints and connection state",
+                            "Presentation (L6): Data encryption (TLS) and formatting",
+                            "Application (L7): User protocols (HTTP, DNS, SSH)",
+                        ],
+                    },
+                    {
+                        "type": SceneType.CONCLUSION,
+                        "duration": 4.5,
+                        "title": "Encapsulation Complete",
+                        "content": "From raw physical signals to web applications, modular layers power the global internet.",
+                    },
+                ],
+            },
         }

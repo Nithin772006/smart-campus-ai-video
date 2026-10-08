@@ -20,6 +20,11 @@ from app.schemas.visual_scene import (
     AnimationInstruction,
     VisualScene,
     VisualVideoPlan,
+    CameraMotion,
+    VisualEmphasis,
+    SceneTransition,
+    BackgroundStyle,
+    CinematicVisualStyle,
 )
 from app.services.ollama_service import (
     OllamaService,
@@ -29,36 +34,48 @@ from app.services.ollama_service import (
 
 logger = logging.getLogger(__name__)
 
-VISUAL_PLANNER_SYSTEM_PROMPT = """You are an expert educational video production director and instructional designer.
-Your task is to convert an academic topic into a VISUAL-FIRST VIDEO PRODUCTION PLAN.
+VISUAL_PLANNER_SYSTEM_PROMPT = """You are an expert educational video production director and instructional designer (in the spirit of 3Blue1Brown and premium educational YouTube videos).
+Your task is to convert an academic topic into a VISUAL-FIRST, CINEMATIC VIDEO PRODUCTION PLAN.
 
-This is NOT merely a narration script. It is an engineering blueprint for rendering educational video scenes.
+This is NOT merely a narration script. It is an engineering blueprint for rendering high-impact educational video scenes.
+
+Follow a rich pedagogical progression:
+Phase 1: Hook / Intro (engage curiosity; e.g. teacher welcome or real-world visual hook).
+Phase 2: Concrete Observation / Physical Simulation (what happens in reality).
+Phase 3: Core Law / Technical Equation (exact mathematical formulation with glowing emphasis).
+Phase 4: Component / Vector Diagram (labeled structural breakdown).
+Phase 5: Proportionality / Graph / Complexity (how variables scale).
+Phase 6: Synthesis / Summary (teacher consolidates takeaways).
 
 For EVERY scene, you MUST determine:
 1. "narration": What the student hears (clear, concise spoken script for voice synthesis).
 2. "visual_description": What the student sees on screen (spatial layout, graphics, equations, motion).
-3. "visual_engine": The rendering engine:
-   - "manim" : Equations, formulas, graphs, geometry, algorithmic diagrams, coordinate planes.
-   - "cloud_video" : Photorealistic demonstrations, real-world physics metaphors, natural phenomena, cinematic visuals.
+3. "visual_engine":
+   - "manim" : Equations, formulas, graphs, geometry, algorithmic diagrams, coordinate planes, code.
+   - "cloud_video" : Photorealistic demonstrations, real-world physical metaphors, natural phenomena, cinematic visuals (3-8s).
    - "avatar" : AI teacher direct address, lesson introduction, conceptual summary.
-   - "mixed" : Composite scenes (Manim graphics with AI teacher presenting on the side).
+   - "mixed" : Composite scenes (Manim graphics with AI teacher on the side).
 4. "scene_type": One of:
    - "teacher_intro", "title", "explanation", "equation", "diagram", "graph", "process",
    - "timeline", "comparison", "algorithm", "physics_simulation", "chemistry_visual",
    - "biology_visual", "cinematic", "teacher_explanation", "teacher_summary", "transition".
-5. "visual_elements": Array of key objects ({ "type": str, "label": str, "description": str, "properties": dict }).
-6. "animations": Array of kinetic actions ({ "action": str, "target": str, "duration": float, "description": str }).
-7. "teacher_enabled": true if the AI teacher avatar appears; false otherwise.
-8. "teacher_position": "none", "left", "center", or "right".
-9. "visual_prompt": For "cloud_video" scenes, provide a high-quality descriptive prompt for text-to-video generation.
-10. "duration_seconds": 4.0 to 8.0 seconds per scene.
+5. "camera_motion": "static", "slow_zoom_in", "slow_zoom_out", "pan_left", "pan_right", "focus_center".
+6. "emphasis": "none", "highlight", "glow", "pulse", "zoom", "draw_attention".
+7. "transition_in": "cut", "fade", "crossfade", "slide", "zoom".
+8. "transition_out": "cut", "fade", "crossfade", "slide", "zoom".
+9. "background_style": "dark_slate", "midnight_blue", "black_chalkboard", "deep_gradient".
+10. "visual_elements": Array of key objects ({ "type": str, "label": str, "description": str, "properties": dict }).
+11. "animations": Array of kinetic actions ({ "action": str, "target": str, "duration": float, "description": str }).
+12. "teacher_enabled": true if the AI teacher appears; false otherwise. (Static teacher should only appear for intro/summary/key explanation, NOT every scene).
+13. "teacher_position": "none", "left", "center", or "right".
+14. "visual_prompt": For "cloud_video" scenes, descriptive prompt for video generation (3-8 seconds).
+15. "duration_seconds": 4.0 to 8.0 seconds per scene.
+16. "is_hook": true if this scene acts as a visual hook; false otherwise.
 
 Guidelines:
-- Produce 4 to 7 scenes (total duration ~25 to 45 seconds).
-- Scene 1 should introduce the topic (e.g. teacher_intro with teacher at center or right, or title).
-- Use "manim" for all equations, graphs, math notations, and computer science algorithms.
-- Use "cloud_video" selectively for real-world conceptual metaphors and impressive cinematic shots.
-- The final scene should summarize key takeaways (e.g. teacher_summary).
+- Produce 5 to 8 scenes (total duration ~25 to 45 seconds).
+- Use "manim" for all equations, graphs, math notations, algorithms, and technical diagrams.
+- Use "cloud_video" only for short (3-8s) real-world conceptual metaphors.
 - Output MUST be valid JSON matching the exact schema below. Do not use Markdown code fences.
 
 JSON Schema format:
@@ -66,6 +83,7 @@ JSON Schema format:
   "topic": "Topic Name",
   "title": "Educational Title",
   "total_duration_seconds": 30.0,
+  "overall_visual_style": "cinematic_educational",
   "learning_objectives": ["Objective 1", "Objective 2"],
   "scenes": [
     {
@@ -78,6 +96,13 @@ JSON Schema format:
       "duration_seconds": 5.0,
       "teacher_enabled": true,
       "teacher_position": "center",
+      "camera_motion": "static",
+      "emphasis": "none",
+      "transition_in": "fade",
+      "transition_out": "cut",
+      "background_style": "dark_slate",
+      "visual_style": "cinematic_educational",
+      "is_hook": false,
       "visual_elements": [
         { "type": "avatar", "label": "Teacher", "description": "SmartCampus teacher avatar" }
       ],
@@ -91,6 +116,20 @@ JSON Schema format:
 """
 
 
+
+def _resolve_visual_style(style_str: Optional[str]) -> CinematicVisualStyle:
+    if not style_str:
+        return CinematicVisualStyle.AUTO
+    norm = style_str.strip().lower()
+    if norm in ("cinematic", "cinematic_educational", "cinematic educational"):
+        return CinematicVisualStyle.CINEMATIC_EDUCATIONAL
+    elif norm in ("3b1b", "3blue1brown", "3blue1brown_inspired", "3blue1brown inspired"):
+        return CinematicVisualStyle.THREE_BLUE_ONE_BROWN
+    elif norm in ("educational", "academic"):
+        return CinematicVisualStyle.EDUCATIONAL
+    return CinematicVisualStyle.AUTO
+
+
 class VisualScenePlanner(ABC):
     """Abstract base class for visual scene planners."""
 
@@ -100,6 +139,7 @@ class VisualScenePlanner(ABC):
         topic: str,
         target_duration: float = 30.0,
         level: str = "intermediate",
+        visual_style: Optional[str] = "auto",
     ) -> VisualVideoPlan:
         """Generate a visual-first educational video plan for the topic."""
         pass
@@ -117,34 +157,48 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
         topic: str,
         target_duration: float = 30.0,
         level: str = "intermediate",
+        visual_style: Optional[str] = "auto",
     ) -> VisualVideoPlan:
         clean_topic = topic.strip()
         lower_topic = clean_topic.lower()
+        style_enum = _resolve_visual_style(visual_style)
 
         if "newton" in lower_topic:
-            return self._plan_newton(clean_topic)
+            return self._plan_newton(clean_topic, style_enum)
         elif "photosynthesis" in lower_topic:
-            return self._plan_photosynthesis(clean_topic)
+            return self._plan_photosynthesis(clean_topic, style_enum)
         elif "binary search" in lower_topic:
-            return self._plan_binary_search(clean_topic)
+            return self._plan_binary_search(clean_topic, style_enum)
+        elif any(k in lower_topic for k in ("osi", "7 layers", "seven layers", "open systems interconnection")):
+            return self._plan_osi_model(clean_topic, style_enum)
         elif "gradient descent" in lower_topic:
-            return self._plan_gradient_descent(clean_topic)
+            return self._plan_gradient_descent(clean_topic, style_enum)
         elif "tcp" in lower_topic or "handshake" in lower_topic:
-            return self._plan_tcp_handshake(clean_topic)
+            return self._plan_tcp_handshake(clean_topic, style_enum)
         else:
-            return self._plan_generic(clean_topic, target_duration, level)
+            return self._plan_generic(clean_topic, target_duration, level, style_enum)
 
-    def _plan_newton(self, topic: str) -> VisualVideoPlan:
+    def _plan_newton(
+        self,
+        topic: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.CINEMATIC_EDUCATIONAL
+    ) -> VisualVideoPlan:
         scenes = [
             VisualScene(
                 scene_id="scene_1",
                 scene_type=SceneType.TEACHER_INTRO,
                 visual_engine=VisualEngine.AVATAR,
                 narration="Welcome to Physics! Today we uncover Newton's Second Law of Motion, the foundation of classical mechanics.",
-                visual_description="AI Teacher in navy blazer standing center stage welcoming the class.",
-                duration_seconds=5.0,
+                visual_description="AI Teacher in navy blazer standing center stage welcoming students to classical mechanics.",
+                duration_seconds=4.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="avatar", label="Teacher", description="SmartCampus AI Teacher")
                 ],
@@ -155,22 +209,28 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ),
             VisualScene(
                 scene_id="scene_2",
-                scene_type=SceneType.EQUATION,
-                visual_engine=VisualEngine.MANIM,
-                narration="At its heart is a simple yet powerful relationship: Net Force equals mass times acceleration, written as F equals m a.",
-                visual_description="Prominent vector LaTeX equation F = ma written in brilliant cyan with labeled variable callouts.",
-                duration_seconds=5.5,
+                scene_type=SceneType.CINEMATIC,
+                visual_engine=VisualEngine.CLOUD_VIDEO,
+                narration="Imagine a massive boulder at rest: to accelerate it, you must exert an unbalanced physical force against its stubborn inertia.",
+                visual_description="Cinematic real-world illustration of an industrial warehouse cart accelerating under heavy applied human force.",
+                visual_prompt="A dramatic cinematic visualization of a heavy wheeled cart being pushed along a polished warehouse floor, realistic lighting, physical inertia, smooth camera tracking",
+                duration_seconds=4.5,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.MIDNIGHT_BLUE,
+                visual_style=visual_style,
+                is_hook=True,
                 visual_elements=[
-                    VisualElement(type="formula", label="FormulaFma", description="LaTeX F = m a", properties={"color": "CYAN"}),
-                    VisualElement(type="text", label="Labels", description="Force (N), Mass (kg), Acceleration (m/s^2)")
+                    VisualElement(type="cinematic_scene", label="WarehouseCart", description="Real-world mass inertia demonstration")
                 ],
                 animations=[
-                    AnimationInstruction(action="create", target="FormulaFma", duration=1.5, description="Formula writes onto screen"),
-                    AnimationInstruction(action="indicate", target="FormulaFma", duration=1.0, description="Glow on acceleration symbol")
+                    AnimationInstruction(action="play", target="WarehouseCart", duration=4.5, description="Continuous realistic cinematic motion")
                 ],
-                educational_goal="Memorize and comprehend the algebraic formulation F = ma."
+                educational_goal="Hook learner curiosity by observing acceleration caused by unbalanced force."
             ),
             VisualScene(
                 scene_id="scene_3",
@@ -178,9 +238,15 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 visual_engine=VisualEngine.MANIM,
                 narration="When a constant force pushes a block, it accelerates uniformly across the plane in the exact direction of the force vector.",
                 visual_description="2D physics simulation of a mass block on a flat surface with dynamic force vector arrow accelerating rightward.",
-                duration_seconds=5.5,
+                duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="shape", label="Block", description="Square mass m = 5 kg"),
                     VisualElement(type="arrow", label="ForceArrow", description="Vector arrow labeled F = 20 N", properties={"color": "YELLOW"})
@@ -193,24 +259,54 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ),
             VisualScene(
                 scene_id="scene_4",
-                scene_type=SceneType.CINEMATIC,
-                visual_engine=VisualEngine.CLOUD_VIDEO,
-                narration="Imagine pushing a heavy cargo cart: the heavier the mass, the harder you must push to achieve the same speed.",
-                visual_description="Cinematic real-world illustration of an industrial warehouse cart accelerating under heavy applied human force.",
-                visual_prompt="A cinematic educational visualization of a heavy wheeled cart being pushed along a polished warehouse floor, realistic lighting, physical inertia, smooth camera tracking",
+                scene_type=SceneType.EQUATION,
+                visual_engine=VisualEngine.MANIM,
+                narration="At its heart is a simple yet powerful relationship: Net Force equals mass times acceleration, written as F equals m a.",
+                visual_description="Prominent vector LaTeX equation F = ma written in brilliant cyan with labeled variable callouts.",
                 duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.GLOW,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
-                    VisualElement(type="cinematic_scene", label="WarehouseCart", description="Real-world mass inertia demonstration")
+                    VisualElement(type="formula", label="FormulaFma", description="LaTeX F = m a", properties={"color": "CYAN"}),
+                    VisualElement(type="text", label="Labels", description="Force (N), Mass (kg), Acceleration (m/s^2)")
                 ],
                 animations=[
-                    AnimationInstruction(action="play", target="WarehouseCart", duration=5.0, description="Continuous realistic cinematic motion")
+                    AnimationInstruction(action="create", target="FormulaFma", duration=1.5, description="Formula writes onto screen"),
+                    AnimationInstruction(action="indicate", target="FormulaFma", duration=1.0, description="Glow on acceleration symbol")
                 ],
-                educational_goal="Connect mathematical theory to real-world mass resistance."
+                educational_goal="Memorize and comprehend the algebraic formulation F = ma."
             ),
             VisualScene(
                 scene_id="scene_5",
+                scene_type=SceneType.DIAGRAM,
+                visual_engine=VisualEngine.MANIM,
+                narration="Breaking down the free-body diagram: gravity pulls downward, normal force balances upward, leaving the applied force to accelerate the mass.",
+                visual_description="Free body vector diagram displaying normal force F_N, gravity F_g, and net horizontal applied force F_app with coordinate axes.",
+                duration_seconds=5.0,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[
+                    VisualElement(type="diagram", label="VectorDiagram", description="Vector decomposition of forces")
+                ],
+                animations=[
+                    AnimationInstruction(action="create", target="VectorDiagram", duration=2.0, description="Force arrows emerge")
+                ],
+                educational_goal="Deconstruct concurrent vectors and isolate the net acceleration force."
+            ),
+            VisualScene(
+                scene_id="scene_6",
                 scene_type=SceneType.GRAPH,
                 visual_engine=VisualEngine.MANIM,
                 narration="Plotting acceleration versus force reveals a direct linear relationship: double the force, and you double the acceleration.",
@@ -218,6 +314,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="axis", label="Axes", description="Y-axis acceleration (m/s^2), X-axis Force (N)"),
                     VisualElement(type="line", label="LinearPlot", description="Straight linear trajectory through origin", properties={"color": "GREEN"})
@@ -229,19 +331,48 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 educational_goal="Interpret the linear proportionality graph of force and acceleration."
             ),
             VisualScene(
-                scene_id="scene_6",
-                scene_type=SceneType.TEACHER_SUMMARY,
+                scene_id="scene_7",
+                scene_type=SceneType.TEACHER_EXPLANATION,
                 visual_engine=VisualEngine.AVATAR,
-                narration="To summarize: Force creates acceleration, mass resists it, and F equals m a explains it all. Great work today!",
-                visual_description="AI Teacher positioned on the right reviewing the summary key takeaways with gesture.",
-                duration_seconds=5.0,
+                narration="Notice the dual role: force actively propels the body, while mass measures inertial reluctance to change state.",
+                visual_description="AI Teacher on the right explaining the physical intuition of mass resisting acceleration.",
+                duration_seconds=4.5,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="avatar", label="Teacher", description="SmartCampus AI Teacher")
                 ],
                 animations=[
                     AnimationInstruction(action="fade_in", target="Teacher", duration=1.0, description="Teacher re-enters on right")
+                ],
+                educational_goal="Reinforce the intuitive duality between driving force and mass inertia."
+            ),
+            VisualScene(
+                scene_id="scene_8",
+                scene_type=SceneType.TEACHER_SUMMARY,
+                visual_engine=VisualEngine.AVATAR,
+                narration="To summarize: Force creates acceleration, mass resists it, and F equals m a explains it all. Great work today!",
+                visual_description="AI Teacher delivering lecture wrap-up with final law recap.",
+                duration_seconds=4.5,
+                teacher_enabled=True,
+                teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[
+                    VisualElement(type="avatar", label="Teacher", description="SmartCampus AI Teacher")
+                ],
+                animations=[
+                    AnimationInstruction(action="fade_in", target="Teacher", duration=1.0, description="Teacher re-enters center stage")
                 ],
                 educational_goal="Consolidate core formula and law of motion."
             ),
@@ -251,6 +382,7 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             topic=topic,
             title="Newton's Second Law of Motion: Force, Mass, and Acceleration",
             total_duration_seconds=total_dur,
+            overall_visual_style=visual_style,
             scenes=scenes,
             learning_objectives=[
                 "State and write Newton's Second Law: F = ma",
@@ -259,7 +391,11 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ]
         )
 
-    def _plan_photosynthesis(self, topic: str) -> VisualVideoPlan:
+    def _plan_photosynthesis(
+        self,
+        topic: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.CINEMATIC_EDUCATIONAL
+    ) -> VisualVideoPlan:
         scenes = [
             VisualScene(
                 scene_id="scene_1",
@@ -267,29 +403,43 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 visual_engine=VisualEngine.AVATAR,
                 narration="Welcome to Plant Biology! Today we discover photosynthesis, the biochemical miracle that fuels life on Earth.",
                 visual_description="AI Teacher introducing plant solar energy capture.",
-                duration_seconds=5.0,
+                duration_seconds=4.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Introduce the primary solar energy conversion process."
             ),
             VisualScene(
                 scene_id="scene_2",
-                scene_type=SceneType.EQUATION,
-                visual_engine=VisualEngine.MANIM,
-                narration="Plants transform six carbon dioxide molecules and six water molecules using light into glucose and life-giving oxygen.",
-                visual_description="Chemical reaction equation 6CO2 + 6H2O + Light -> C6H12O6 + 6O2 in vibrant color-coded chemical symbols.",
-                duration_seconds=6.0,
+                scene_type=SceneType.CINEMATIC,
+                visual_engine=VisualEngine.CLOUD_VIDEO,
+                narration="Under bright sunlight, microscopic leaf stomata breathe in carbon dioxide while chlorophyll radiates lush emerald vitality.",
+                visual_description="Photorealistic macro camera dive into a sunlit leaf surface showing shimmering sunlight and translucent cell walls.",
+                visual_prompt="Cinematic macro shot of sunlit plant leaf, translucent cellular structure, radiant golden sunbeams, dew drops, photorealistic biology",
+                duration_seconds=4.5,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.MIDNIGHT_BLUE,
+                visual_style=visual_style,
+                is_hook=True,
                 visual_elements=[
-                    VisualElement(type="formula", label="PhotosynthesisEq", description="6CO2 + 6H2O -> C6H12O6 + 6O2", properties={"color": "EMERALD"})
+                    VisualElement(type="cinematic_scene", label="SunlitLeaf", description="Macro biological landscape")
                 ],
                 animations=[
-                    AnimationInstruction(action="create", target="PhotosynthesisEq", duration=2.0)
+                    AnimationInstruction(action="play", target="SunlitLeaf", duration=4.5)
                 ],
-                educational_goal="Master the balanced chemical equation of photosynthesis."
+                educational_goal="Connect microscopic chemical reactions to visible living foliage."
             ),
             VisualScene(
                 scene_id="scene_3",
@@ -297,9 +447,15 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 visual_engine=VisualEngine.MANIM,
                 narration="Inside plant leaf cells, double-membraned chloroplasts house disc-shaped thylakoids where chlorophyll captures photons.",
                 visual_description="Detailed cross-section diagram of a chloroplast displaying stroma, thylakoid stacks, and granum.",
-                duration_seconds=6.0,
+                duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="diagram", label="ChloroplastDiagram", description="Organelle anatomy and thylakoid stacks")
                 ],
@@ -310,31 +466,88 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ),
             VisualScene(
                 scene_id="scene_4",
-                scene_type=SceneType.CINEMATIC,
-                visual_engine=VisualEngine.CLOUD_VIDEO,
-                narration="Under bright sunlight, microscopic leaf stomata breathe in carbon dioxide while chlorophyll radiates lush emerald vitality.",
-                visual_description="Photorealistic macro camera dive into a sunlit leaf surface showing shimmering sunlight and translucent cell walls.",
-                visual_prompt="Cinematic macro shot of sunlit plant leaf, translucent cellular structure, radiant golden sunbeams, dew drops, photorealistic biology",
+                scene_type=SceneType.PROCESS,
+                visual_engine=VisualEngine.MANIM,
+                narration="Light-dependent reactions in thylakoids split water molecules, generating chemical energy carriers ATP and NADPH.",
+                visual_description="Dynamic biochemical process animation showing water splitting into oxygen gas and energized electrons flowing.",
                 duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
-                    VisualElement(type="cinematic_scene", label="SunlitLeaf", description="Macro biological landscape")
+                    VisualElement(type="diagram", label="LightReaction", description="Water splitting and electron transport chain")
                 ],
                 animations=[
-                    AnimationInstruction(action="play", target="SunlitLeaf", duration=5.0)
+                    AnimationInstruction(action="create", target="LightReaction", duration=2.0)
                 ],
-                educational_goal="Connect microscopic chemical reactions to visible living foliage."
+                educational_goal="Understand water photolysis and energetic photon absorption."
             ),
             VisualScene(
                 scene_id="scene_5",
+                scene_type=SceneType.EQUATION,
+                visual_engine=VisualEngine.MANIM,
+                narration="Plants transform six carbon dioxide molecules and six water molecules using light into glucose and life-giving oxygen.",
+                visual_description="Chemical reaction equation 6CO2 + 6H2O + Light -> C6H12O6 + 6O2 in vibrant color-coded chemical symbols.",
+                duration_seconds=5.0,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.GLOW,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[
+                    VisualElement(type="formula", label="PhotosynthesisEq", description="6CO2 + 6H2O -> C6H12O6 + 6O2", properties={"color": "EMERALD"})
+                ],
+                animations=[
+                    AnimationInstruction(action="create", target="PhotosynthesisEq", duration=2.0)
+                ],
+                educational_goal="Master the balanced chemical equation of photosynthesis."
+            ),
+            VisualScene(
+                scene_id="scene_6",
+                scene_type=SceneType.COMPARISON,
+                visual_engine=VisualEngine.MANIM,
+                narration="Comparing both stages: light reactions in thylakoids harness solar photons, while the Calvin cycle in the stroma builds sugar molecules.",
+                visual_description="Side-by-side comparison chart illustrating Light Reactions versus Calvin Cycle inputs and chemical products.",
+                duration_seconds=5.0,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[
+                    VisualElement(type="diagram", label="StageComparison", description="Light Reactions vs Calvin Cycle")
+                ],
+                animations=[
+                    AnimationInstruction(action="create", target="StageComparison", duration=2.0)
+                ],
+                educational_goal="Differentiate between light reactions and carbon fixation."
+            ),
+            VisualScene(
+                scene_id="scene_7",
                 scene_type=SceneType.TEACHER_SUMMARY,
                 visual_engine=VisualEngine.AVATAR,
                 narration="In summary: Sunlight, water, and air become sugar and oxygen. Without photosynthesis, complex ecosystems could not exist.",
                 visual_description="AI Teacher presenting closing remarks on the right side of the screen.",
-                duration_seconds=5.0,
+                duration_seconds=4.5,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Summarize inputs, outputs, and ecological significance."
@@ -344,6 +557,7 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             topic=topic,
             title="Photosynthesis: How Plants Convert Sunlight into Chemical Energy",
             total_duration_seconds=sum(s.duration_seconds for s in scenes),
+            overall_visual_style=visual_style,
             scenes=scenes,
             learning_objectives=[
                 "Write the chemical equation for photosynthesis",
@@ -352,7 +566,11 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ]
         )
 
-    def _plan_binary_search(self, topic: str) -> VisualVideoPlan:
+    def _plan_binary_search(
+        self,
+        topic: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.CINEMATIC_EDUCATIONAL
+    ) -> VisualVideoPlan:
         scenes = [
             VisualScene(
                 scene_id="scene_1",
@@ -360,22 +578,59 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 visual_engine=VisualEngine.AVATAR,
                 narration="Welcome to Algorithms! Today we explore Binary Search, the cornerstone of logarithmic divide-and-conquer efficiency.",
                 visual_description="AI Teacher introducing algorithm complexity.",
-                duration_seconds=5.0,
+                duration_seconds=4.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Introduce binary search premise on sorted collections."
             ),
             VisualScene(
                 scene_id="scene_2",
+                scene_type=SceneType.CINEMATIC,
+                visual_engine=VisualEngine.CLOUD_VIDEO,
+                narration="Imagine finding a name in a dictionary with one million pages: flipping page by page takes forever, but opening the middle cuts work instantly.",
+                visual_description="Cinematic metaphor of a vast endless archive library, flipping instantly to the middle book.",
+                visual_prompt="Cinematic shot of endless library corridors with shelves stretching into infinity, floating books illuminated with soft blue neon glow",
+                duration_seconds=4.5,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.MIDNIGHT_BLUE,
+                visual_style=visual_style,
+                is_hook=True,
+                visual_elements=[
+                    VisualElement(type="cinematic_scene", label="LibrarySearch", description="Metaphor for searching huge datasets")
+                ],
+                animations=[
+                    AnimationInstruction(action="play", target="LibrarySearch", duration=4.5)
+                ],
+                educational_goal="Visually grasp the immense scale challenge of searching unsorted vs sorted collections."
+            ),
+            VisualScene(
+                scene_id="scene_3",
                 scene_type=SceneType.ALGORITHM,
                 visual_engine=VisualEngine.MANIM,
                 narration="Binary search requires an already sorted array. We maintain three pointers: low, mid, and high to examine the middle element.",
                 visual_description="Horizontal array of indexed boxes [2, 5, 8, 12, 16, 23, 38, 56, 72] with arrows pointing to low, mid, and high.",
-                duration_seconds=6.0,
+                duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="shape", label="SortedArray", description="Array boxes with numbers"),
                     VisualElement(type="arrow", label="Pointers", description="Low, Mid, High pointer markers")
@@ -387,14 +642,20 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 educational_goal="Identify initialization of low, high, and midpoint indices."
             ),
             VisualScene(
-                scene_id="scene_3",
+                scene_id="scene_4",
                 scene_type=SceneType.PROCESS,
                 visual_engine=VisualEngine.MANIM,
                 narration="If the target is smaller than mid, we discard the right half entirely. With each comparison, the search space halves.",
                 visual_description="Right half of array dims and fades out, and high pointer updates to mid minus one.",
-                duration_seconds=6.0,
+                duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="shape", label="RemainingArray", description="Left half illuminated")
                 ],
@@ -404,14 +665,43 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 educational_goal="Understand elimination of sub-arrays via order comparison."
             ),
             VisualScene(
-                scene_id="scene_4",
-                scene_type=SceneType.DIAGRAM,
+                scene_id="scene_5",
+                scene_type=SceneType.ALGORITHM,
+                visual_engine=VisualEngine.MANIM,
+                narration="The loop repeats: recompute mid as low plus high divided by two, compare, and contract until the target item is pinpointed.",
+                visual_description="Step-by-step algorithmic flowchart showing while low <= high condition, mid update, and pointer shift.",
+                duration_seconds=5.0,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[
+                    VisualElement(type="diagram", label="LoopSteps", description="Loop control logic flowchart")
+                ],
+                animations=[
+                    AnimationInstruction(action="create", target="LoopSteps", duration=2.0)
+                ],
+                educational_goal="Trace the iterative while loop convergence condition."
+            ),
+            VisualScene(
+                scene_id="scene_6",
+                scene_type=SceneType.GRAPH,
                 visual_engine=VisualEngine.MANIM,
                 narration="This logarithmic reduction achieves Big-O of log n time complexity: searching one million items takes only twenty checks!",
                 visual_description="Decision tree bifurcation diagram illustrating O(log N) depth scaling against linear O(N) curve.",
-                duration_seconds=5.5,
+                duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="diagram", label="ComplexityTree", description="Binary tree with O(log n) level labels")
                 ],
@@ -421,14 +711,20 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 educational_goal="Contrast logarithmic time complexity with linear search."
             ),
             VisualScene(
-                scene_id="scene_5",
+                scene_id="scene_7",
                 scene_type=SceneType.TEACHER_SUMMARY,
                 visual_engine=VisualEngine.AVATAR,
                 narration="Remember: sorted data is required, divide by half each step, and achieve lightning-fast O of log n lookups.",
                 visual_description="AI Teacher on right concluding binary search lecture.",
-                duration_seconds=5.0,
+                duration_seconds=4.5,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Solidify prerequisites and algorithmic efficiency."
@@ -438,6 +734,7 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             topic=topic,
             title="Binary Search Algorithm: Logarithmic Divide and Conquer",
             total_duration_seconds=sum(s.duration_seconds for s in scenes),
+            overall_visual_style=visual_style,
             scenes=scenes,
             learning_objectives=[
                 "Understand the precondition: sorted array",
@@ -446,7 +743,11 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ]
         )
 
-    def _plan_gradient_descent(self, topic: str) -> VisualVideoPlan:
+    def _plan_gradient_descent(
+        self,
+        topic: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.CINEMATIC_EDUCATIONAL
+    ) -> VisualVideoPlan:
         scenes = [
             VisualScene(
                 scene_id="scene_1",
@@ -457,6 +758,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Define the objective of loss minimization in machine learning."
@@ -470,6 +777,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=6.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.GLOW,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="formula", label="UpdateRule", description="w := w - alpha * grad(L)", properties={"color": "GOLD"})
                 ],
@@ -487,6 +800,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=6.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="shape", label="LossSurface", description="Convex loss bowl with gradient arrows")
                 ],
@@ -505,6 +824,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.MIDNIGHT_BLUE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="cinematic_scene", label="ValleyMetaphor", description="Ball rolling down mountain valley")
                 ],
@@ -522,6 +847,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Highlight practical role of the learning rate parameter."
@@ -531,6 +862,7 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             topic=topic,
             title="Gradient Descent Optimization: Navigating the Loss Landscape",
             total_duration_seconds=sum(s.duration_seconds for s in scenes),
+            overall_visual_style=visual_style,
             scenes=scenes,
             learning_objectives=[
                 "Understand the weight update equation w := w - alpha * grad(L)",
@@ -539,7 +871,11 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ]
         )
 
-    def _plan_tcp_handshake(self, topic: str) -> VisualVideoPlan:
+    def _plan_tcp_handshake(
+        self,
+        topic: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.CINEMATIC_EDUCATIONAL
+    ) -> VisualVideoPlan:
         scenes = [
             VisualScene(
                 scene_id="scene_1",
@@ -550,6 +886,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Introduce the necessity of connection establishment in TCP."
@@ -563,6 +905,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=6.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="diagram", label="Lifelines", description="Client and Server timeline columns"),
                     VisualElement(type="arrow", label="SynPacket", description="Packet arrow SYN with seq=x", properties={"color": "CYAN"})
@@ -582,6 +930,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=6.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="arrow", label="SynAckPacket", description="Packet arrow SYN-ACK", properties={"color": "YELLOW"})
                 ],
@@ -599,6 +953,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.5,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="arrow", label="AckPacket", description="Packet arrow ACK", properties={"color": "GREEN"}),
                     VisualElement(type="text", label="StateStatus", description="ESTABLISHED connection state")
@@ -618,6 +978,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal="Recap the three-phase handshake sequence."
@@ -627,6 +993,7 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             topic=topic,
             title="The TCP Three-Way Handshake: Reliable Connection Establishment",
             total_duration_seconds=sum(s.duration_seconds for s in scenes),
+            overall_visual_style=visual_style,
             scenes=scenes,
             learning_objectives=[
                 "Define the purpose of the 3-way handshake in TCP",
@@ -635,7 +1002,176 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             ]
         )
 
-    def _plan_generic(self, topic: str, target_duration: float, level: str) -> VisualVideoPlan:
+    def _plan_osi_model(
+        self,
+        topic: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.AUTO
+    ) -> VisualVideoPlan:
+        """
+        Task 9F Visual Progression for OSI Model:
+        Scene 1: Teacher Intro (concept preview)
+        Scene 2: 7-Layer Stack Overview (visual stacked tiers)
+        Scene 3: Physical Layer (Device -> cable -> signals)
+        Scene 4: Data Link Layer (Device -> frame -> switch)
+        Scene 5: Network Layer (Computer -> Router -> Network)
+        Scene 6: Transport & Upper Layers (Segments, TLS, HTTP)
+        Scene 7: Teacher Summary (encapsulation recap)
+        """
+        scenes = [
+            VisualScene(
+                scene_id="scene_1",
+                scene_type=SceneType.TEACHER_INTRO,
+                visual_engine=VisualEngine.AVATAR,
+                narration="Welcome! Today we break down the 7 layers of the OSI reference model.",
+                visual_description="AI Teacher presenting network architecture overview.",
+                duration_seconds=4.0,
+                teacher_enabled=True,
+                teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
+                animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=0.8)],
+                educational_goal="Hook learner interest in the 7-layer networking architecture."
+            ),
+            VisualScene(
+                scene_id="scene_2",
+                scene_type=SceneType.DIAGRAM,
+                visual_engine=VisualEngine.MANIM,
+                narration="The OSI model organizes network functions into seven standardized modular layers.",
+                visual_description="Stacked color-coded boxes displaying all 7 OSI layers from Physical up to Application.",
+                duration_seconds=5.0,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.STATIC,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="diagram", label="OSIStack", description="7-layer stacked model")],
+                animations=[AnimationInstruction(action="create", target="OSIStack", duration=1.2)],
+                educational_goal="Visualize the complete 7-tier stack hierarchy."
+            ),
+            VisualScene(
+                scene_id="scene_3",
+                scene_type=SceneType.PROCESS,
+                visual_engine=VisualEngine.MANIM,
+                narration="Layer 1, the Physical Layer, transmits raw binary electrical and optical bit signals across cables.",
+                visual_description="Device to device transmission showing raw bit signals pulsing across physical cable.",
+                duration_seconds=4.5,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.STATIC,
+                emphasis=VisualEmphasis.PULSE,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="diagram", label="PhysicalMedium", description="Physical cable transmission")],
+                animations=[AnimationInstruction(action="animate", target="PhysicalMedium", duration=1.0)],
+                educational_goal="Show Layer 1 hardware and signal transmission."
+            ),
+            VisualScene(
+                scene_id="scene_4",
+                scene_type=SceneType.PROCESS,
+                visual_engine=VisualEngine.MANIM,
+                narration="Layer 2, the Data Link Layer, bundles bits into MAC frames and routes them through local network switches.",
+                visual_description="Host device sending Ethernet frame with MAC address header into local switch.",
+                duration_seconds=4.5,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.STATIC,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="diagram", label="DataLinkSwitch", description="Frame switching on LAN")],
+                animations=[AnimationInstruction(action="move", target="DataLinkSwitch", duration=1.0)],
+                educational_goal="Demonstrate Layer 2 local frame forwarding."
+            ),
+            VisualScene(
+                scene_id="scene_5",
+                scene_type=SceneType.PROCESS,
+                visual_engine=VisualEngine.MANIM,
+                narration="Layer 3 routes IP packets across routers, while Layer 4 ensures reliable end-to-end transport.",
+                visual_description="Packet transmission from Host A through internet Router to destination Server B.",
+                duration_seconds=5.0,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.STATIC,
+                emphasis=VisualEmphasis.GLOW,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="diagram", label="NetworkRouting", description="Packet router traversal")],
+                animations=[AnimationInstruction(action="move", target="NetworkRouting", duration=1.2)],
+                educational_goal="Explain Layers 3 and 4: routing and transport."
+            ),
+            VisualScene(
+                scene_id="scene_6",
+                scene_type=SceneType.PROCESS,
+                visual_engine=VisualEngine.MANIM,
+                narration="Finally, Layers 5 through 7 handle session state, TLS encryption, and application protocols like HTTP.",
+                visual_description="Upper protocol block showing HTTP request data and encryption wrappers.",
+                duration_seconds=4.5,
+                teacher_enabled=False,
+                teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.STATIC,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="diagram", label="UpperLayers", description="Application layer data")],
+                animations=[AnimationInstruction(action="create", target="UpperLayers", duration=1.0)],
+                educational_goal="Summarize upper application layers."
+            ),
+            VisualScene(
+                scene_id="scene_7",
+                scene_type=SceneType.TEACHER_SUMMARY,
+                visual_engine=VisualEngine.AVATAR,
+                narration="By separating network duties into seven distinct layers, the OSI model enables global interoperability.",
+                visual_description="AI Teacher presenting closing summary on the right side of the screen.",
+                duration_seconds=4.5,
+                teacher_enabled=True,
+                teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
+                visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
+                animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=0.8)],
+                educational_goal="Reinforce modularity as the foundational strength of networking."
+            ),
+        ]
+        return VisualVideoPlan(
+            topic=topic,
+            title="The OSI Reference Model: 7-Layer Architecture",
+            total_duration_seconds=sum(s.duration_seconds for s in scenes),
+            overall_visual_style=visual_style,
+            scenes=scenes,
+            learning_objectives=[
+                "List the seven layers of the OSI model from Physical to Application",
+                "Understand the primary function of each network layer",
+                "Explain the role of modular protocol encapsulation"
+            ]
+        )
+
+    def _plan_generic(
+        self,
+        topic: str,
+        target_duration: float,
+        level: str,
+        visual_style: CinematicVisualStyle = CinematicVisualStyle.AUTO
+    ) -> VisualVideoPlan:
         scenes = [
             VisualScene(
                 scene_id="scene_1",
@@ -646,6 +1182,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.CENTER,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.FADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal=f"Engage students with {topic}."
@@ -659,6 +1201,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=6.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="diagram", label="ConceptMap", description=f"Foundational concepts of {topic}")
                 ],
@@ -674,6 +1222,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=6.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.HIGHLIGHT,
+                transition_in=SceneTransition.CUT,
+                transition_out=SceneTransition.CUT,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="shape", label="Flowchart", description=f"Mechanics of {topic}")
                 ],
@@ -690,6 +1244,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=False,
                 teacher_position=TeacherPosition.NONE,
+                camera_motion=CameraMotion.SLOW_ZOOM_IN,
+                emphasis=VisualEmphasis.DRAW_ATTENTION,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.CROSSFADE,
+                background_style=BackgroundStyle.MIDNIGHT_BLUE,
+                visual_style=visual_style,
                 visual_elements=[
                     VisualElement(type="cinematic_scene", label="RealWorld", description=f"Real world application of {topic}")
                 ],
@@ -705,6 +1265,12 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
                 duration_seconds=5.0,
                 teacher_enabled=True,
                 teacher_position=TeacherPosition.RIGHT,
+                camera_motion=CameraMotion.FOCUS_CENTER,
+                emphasis=VisualEmphasis.NONE,
+                transition_in=SceneTransition.CROSSFADE,
+                transition_out=SceneTransition.FADE,
+                background_style=BackgroundStyle.DARK_SLATE,
+                visual_style=visual_style,
                 visual_elements=[VisualElement(type="avatar", label="Teacher", description="AI Teacher")],
                 animations=[AnimationInstruction(action="fade_in", target="Teacher", duration=1.0)],
                 educational_goal=f"Review summary takeaways for {topic}."
@@ -714,6 +1280,7 @@ class RuleBasedVisualScenePlanner(VisualScenePlanner):
             topic=topic,
             title=f"Understanding {topic}",
             total_duration_seconds=sum(s.duration_seconds for s in scenes),
+            overall_visual_style=visual_style,
             scenes=scenes,
             learning_objectives=[
                 f"Define the foundational principles of {topic}",
@@ -738,6 +1305,7 @@ class LLMVisualScenePlanner(VisualScenePlanner):
         topic: str,
         target_duration: float = 30.0,
         level: str = "intermediate",
+        visual_style: Optional[str] = "auto",
     ) -> VisualVideoPlan:
         """
         Generate a visual plan using Ollama / Qwen2.5 3B.
@@ -746,12 +1314,13 @@ class LLMVisualScenePlanner(VisualScenePlanner):
         clean_topic = topic.strip()
         if not self.ollama.is_available(check_model=False):
             logger.warning("[VisualPlanner] Ollama service not reachable. Using RuleBasedVisualScenePlanner fallback.")
-            return self.fallback_planner.plan(clean_topic, target_duration, level)
+            return self.fallback_planner.plan(clean_topic, target_duration, level, visual_style)
 
         prompt = (
             f"Topic: {clean_topic}\n"
             f"Target Duration: {target_duration} seconds\n"
-            f"Difficulty Level: {level}\n\n"
+            f"Difficulty Level: {level}\n"
+            f"Visual Style Preference: {visual_style or 'auto'}\n\n"
             f"Generate a visual educational video production plan matching the requested JSON schema."
         )
 
@@ -773,7 +1342,7 @@ class LLMVisualScenePlanner(VisualScenePlanner):
                 "[VisualPlanner] LLM visual planning failed for topic '%s' (%s: %s). Falling back to rule-based planner.",
                 clean_topic, type(e).__name__, e
             )
-            return self.fallback_planner.plan(clean_topic, target_duration, level)
+            return self.fallback_planner.plan(clean_topic, target_duration, level, visual_style)
 
     def _clean_and_parse_json(self, raw_text: str) -> Dict[str, Any]:
         """Strip markdown fences and parse JSON payload."""
@@ -789,3 +1358,4 @@ class LLMVisualScenePlanner(VisualScenePlanner):
 
 # Default singleton planner
 visual_scene_planner = LLMVisualScenePlanner()
+

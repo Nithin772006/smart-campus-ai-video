@@ -124,5 +124,21 @@ python tests/test_api.py
 - **POST `/api/video/plan`**: Visual-first scene planner and deterministic router. Produces complete video production plans mapping scenes to Manim, Cloud Video, Avatar, or Mixed without rendering media.
 - **Pedagogical Engine Allocations**: Guarantees equations and coordinate graphs use Manim vector rendering; routes cinematic visual metaphors to Cloud Video and lecture milestones to the AI Teacher.
 
+### 11. ElevenLabs Multilingual TTS (Task 9G-A)
+- **POST `/api/audio/elevenlabs`**: Multilingual speech synthesis with character-level timestamps (`en`, `ta`, `hi`). Saves MP3 and transcode WAV to `generated/audio/<topic_slug>/elevenlabs/`.
+- **GET `/api/audio/elevenlabs/voices`**: Safely retrieves available ElevenLabs voices with premade canonical fallbacks.
+- **Timestamped Subtitle Generation**: Uses ElevenLabs character timestamps to construct SRT/VTT subtitles directly, bypassing Whisper when available. Whisper remains a resilient fallback.
+- **Provider Abstraction & Fallback**: Full video generation supports `voice_provider: "elevenlabs" | "indicf5"`. If ElevenLabs is disabled (`ELEVENLABS_ENABLED=false`) or encounters an API error, it gracefully falls back to local IndicF5.
+- **Audio Master Clock**: Synthesized audio acts as the master clock across Manim and FFmpeg; playback speed is never manipulated.
+- **Configuration (`backend/.env`)**:
+  ```env
+  ELEVENLABS_ENABLED=true
+  ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+  ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
+  ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
+  ELEVENLABS_LANGUAGE=en
+  ELEVENLABS_TIMEOUT=120
+  ```
+
 
 

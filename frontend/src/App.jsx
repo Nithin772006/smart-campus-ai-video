@@ -8,6 +8,7 @@ import GenerationDetails from './components/GenerationDetails';
 import {
   generateVideoFromTopic,
   generateFullVideo,
+  streamFullVideo,
   getVideoUrl,
   checkBackendHealth,
 } from './api';
@@ -17,14 +18,17 @@ export default function App() {
   const [quality, setQuality] = useState('medium_quality');
   const [targetDuration, setTargetDuration] = useState(30);
   const [voice, setVoice] = useState('indicf5');
+  const [language, setLanguage] = useState('en');
+  const [voiceId, setVoiceId] = useState('');
   const [character, setCharacter] = useState(false); // DEFAULT: No Character
   const [characterPosition, setCharacterPosition] = useState('auto');
-  const [visualStyle, setVisualStyle] = useState('academic');
+  const [visualStyle, setVisualStyle] = useState('auto');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [videoUrl, setVideoUrl] = useState('');
+  const [progressData, setProgressData] = useState(null);
   const [backendConnected, setBackendConnected] = useState(true);
 
   // Probe backend connection on mount
@@ -43,6 +47,7 @@ export default function App() {
 
     setLoading(true);
     setError(null);
+    setProgressData(null);
 
     try {
       const data = await generateVideoFromTopic(targetTopic, quality, targetDuration);
@@ -58,7 +63,7 @@ export default function App() {
     }
   };
 
-  const handleFullGenerate = async () => {
+  const handleFullGenerate = () => {
     const targetTopic = topic.trim();
     if (!targetTopic) {
       setError('Please enter an academic topic before generating.');
@@ -67,27 +72,55 @@ export default function App() {
 
     setLoading(true);
     setError(null);
+    setResult(null);
+    setVideoUrl('');
+    setProgressData({
+      overall_progress: 0,
+      stage: 'understanding_topic',
+      stage_index: 1,
+      stages: [],
+    });
 
-    try {
-      const data = await generateFullVideo(
-        targetTopic,
+    // Stream generation with real-time SSE progress
+    streamFullVideo(
+      targetTopic,
+      {
         quality,
-        true,
+        burnSubtitles: true,
         targetDuration,
         character,
         characterPosition,
-        visualStyle
-      );
-      setResult(data);
-      const resolvedUrl = getVideoUrl(data.video_path);
-      setVideoUrl(resolvedUrl);
-      setBackendConnected(true);
-    } catch (err) {
-      setError(err.message || 'An error occurred during final video generation.');
-      checkBackendHealth().then((res) => setBackendConnected(Boolean(res)));
-    } finally {
-      setLoading(false);
-    }
+        visualStyle,
+        voiceProvider: voice,
+        voiceId: voiceId || null,
+        language,
+      },
+      (progressEvent) => {
+        // Real-time stage progress updates from backend
+        setProgressData(progressEvent);
+      },
+      (completeEvent) => {
+        // Video finished successfully!
+        const data = completeEvent.result || completeEvent;
+        setProgressData({
+          overall_progress: 100,
+          stages: completeEvent.stages,
+        });
+        setResult(data);
+        if (data.video_path) {
+          const resolvedUrl = getVideoUrl(data.video_path);
+          setVideoUrl(resolvedUrl);
+        }
+        setBackendConnected(true);
+        setLoading(false);
+      },
+      (err) => {
+        // Error occurred
+        setError(err.message || 'An error occurred during video generation.');
+        setLoading(false);
+        checkBackendHealth().then((res) => setBackendConnected(Boolean(res)));
+      }
+    );
   };
 
   const handleSelectExample = (exampleTopic) => {
@@ -128,6 +161,10 @@ export default function App() {
           setTargetDuration={setTargetDuration}
           voice={voice}
           setVoice={setVoice}
+          language={language}
+          setLanguage={setLanguage}
+          voiceId={voiceId}
+          setVoiceId={setVoiceId}
           character={character}
           setCharacter={setCharacter}
           characterPosition={characterPosition}
@@ -144,11 +181,13 @@ export default function App() {
         />
       </div>
 
-      {/* Loading Progress State */}
-      {loading && (
+      {/* Real-Time Generation Progress Pipeline */}
+      {(loading || progressData) && (
         <GenerationStatus
           topic={topic}
           characterEnabled={character}
+          progressData={progressData}
+          error={error}
         />
       )}
 

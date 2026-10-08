@@ -46,6 +46,52 @@ class TeacherPosition(str, Enum):
     RIGHT = "right"
 
 
+class CameraMotion(str, Enum):
+    """Kinetic camera motions for enhanced visual presentation."""
+    STATIC = "static"
+    SLOW_ZOOM_IN = "slow_zoom_in"
+    SLOW_ZOOM_OUT = "slow_zoom_out"
+    PAN_LEFT = "pan_left"
+    PAN_RIGHT = "pan_right"
+    FOCUS_CENTER = "focus_center"
+
+
+class VisualEmphasis(str, Enum):
+    """Dynamic focal emphasis applied to salient visual elements."""
+    NONE = "none"
+    HIGHLIGHT = "highlight"
+    GLOW = "glow"
+    PULSE = "pulse"
+    ZOOM = "zoom"
+    DRAW_ATTENTION = "draw_attention"
+
+
+class SceneTransition(str, Enum):
+    """Cinematic transitions between educational scenes."""
+    CUT = "cut"
+    FADE = "fade"
+    CROSSFADE = "crossfade"
+    SLIDE = "slide"
+    ZOOM = "zoom"
+
+
+class BackgroundStyle(str, Enum):
+    """Aesthetic canvas style for educational scene presentation."""
+    DARK_SLATE = "dark_slate"
+    MIDNIGHT_BLUE = "midnight_blue"
+    BLACK_CHALKBOARD = "black_chalkboard"
+    DEEP_GRADIENT = "deep_gradient"
+
+
+class CinematicVisualStyle(str, Enum):
+    """Overarching aesthetic theme requested for the video."""
+    EDUCATIONAL = "educational"
+    CINEMATIC_EDUCATIONAL = "cinematic_educational"
+    THREE_BLUE_ONE_BROWN = "3blue1brown"
+    AUTO = "auto"
+
+
+
 class VisualElement(BaseModel):
     """Specific graphical or spatial object presented in the scene."""
     type: str = Field(
@@ -158,6 +204,34 @@ class VisualScene(BaseModel):
         description="Core learning takeaway for this scene",
         json_schema_extra={"example": "Understand that acceleration is directly proportional to applied force."}
     )
+    camera_motion: CameraMotion = Field(
+        default=CameraMotion.STATIC,
+        description="Camera movement applied during the scene (static, slow_zoom_in, etc.)"
+    )
+    emphasis: VisualEmphasis = Field(
+        default=VisualEmphasis.NONE,
+        description="Focal emphasis applied to primary educational objects"
+    )
+    transition_in: SceneTransition = Field(
+        default=SceneTransition.CUT,
+        description="Transition effect when entering this scene"
+    )
+    transition_out: SceneTransition = Field(
+        default=SceneTransition.CUT,
+        description="Transition effect when leaving this scene"
+    )
+    background_style: BackgroundStyle = Field(
+        default=BackgroundStyle.DARK_SLATE,
+        description="Canvas styling of the scene background"
+    )
+    visual_style: Optional[str] = Field(
+        default="educational",
+        description="Visual design style identifier"
+    )
+    is_hook: bool = Field(
+        default=False,
+        description="Whether this scene acts as a visual hook to captivate attention"
+    )
 
     @model_validator(mode="after")
     def validate_teacher_alignment(self) -> "VisualScene":
@@ -190,6 +264,10 @@ class VisualVideoPlan(BaseModel):
         ge=5.0,
         description="Cumulative planned duration across all scenes in seconds",
         json_schema_extra={"example": 30.0}
+    )
+    overall_visual_style: CinematicVisualStyle = Field(
+        default=CinematicVisualStyle.EDUCATIONAL,
+        description="Global aesthetic theme across all scenes in the plan"
     )
     scenes: List[VisualScene] = Field(
         ...,
@@ -245,6 +323,12 @@ class VisualPlanRequest(BaseModel):
         description="Planner selection strategy: 'auto', 'qwen', or 'rule_based'",
         json_schema_extra={"example": "auto"}
     )
+    visual_style: Optional[str] = Field(
+        "auto",
+        description="Visual style aesthetic: 'educational', 'cinematic_educational', '3blue1brown', or 'auto'",
+        json_schema_extra={"example": "cinematic_educational"}
+    )
+
 
 
 class VisualPlanResponse(BaseModel):

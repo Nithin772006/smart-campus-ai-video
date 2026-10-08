@@ -103,6 +103,42 @@ class SceneRenderService:
                     error=f"Uncaught render exception: {str(e)}",
                 )
 
+            # Task 9F: Automatic graceful fallback if primary engine (e.g. cloud_video) failed
+            allow_fallback = kwargs.get("allow_fallback", True)
+            if not rendered_scene.success and allow_fallback and routed_scene.fallback_engine:
+                fb_engine_name = routed_scene.fallback_engine.value
+                if fb_engine_name != engine_name:
+                    logger.warning(
+                        "[SceneRenderService] Engine '%s' failed for scene %s (%s). Attempting fallback to '%s'.",
+                        engine_name, scene_id, rendered_scene.error, fb_engine_name
+                    )
+                    try:
+                        fb_renderer = renderer_registry.get_renderer(fb_engine_name)
+                        fb_rendered = fb_renderer.render(
+                            scene=routed_scene,
+                            output_dir=scene_dir,
+                            quality=quality,
+                            **kwargs,
+                        )
+                        if fb_rendered.success:
+                            logger.info(
+                                "[SceneRenderService] Fallback to '%s' SUCCEEDED for scene %s.",
+                                fb_engine_name, scene_id
+                            )
+                            fb_meta = fb_rendered.metadata or {}
+                            fb_meta["fallback_used"] = True
+                            fb_meta["original_engine"] = engine_name
+                            fb_meta["original_error"] = rendered_scene.error
+                            fb_meta["fallback_engine"] = fb_engine_name
+                            fb_meta["cloud_generated"] = False
+                            fb_rendered.metadata = fb_meta
+                            rendered_scene = fb_rendered
+                    except Exception as fb_err:
+                        logger.error(
+                            "[SceneRenderService] Fallback to '%s' failed for %s: %s",
+                            fb_engine_name, scene_id, fb_err
+                        )
+
             rendered_scenes.append(rendered_scene)
 
         total_elapsed = round(time.perf_counter() - start_time, 2)
